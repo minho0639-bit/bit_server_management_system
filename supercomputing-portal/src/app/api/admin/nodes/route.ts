@@ -1,10 +1,7 @@
 import { NextResponse } from "next/server";
 
-import {
-  createNodeTelemetry,
-  listNodesWithTelemetry,
-  registerNode,
-} from "@/lib/admin-node-store";
+import { listNodesWithTelemetry, registerNode } from "@/lib/admin-node-store";
+import { createNodeTelemetry } from "@/lib/admin-node-telemetry";
 
 export async function GET() {
   const nodes = await listNodesWithTelemetry();
