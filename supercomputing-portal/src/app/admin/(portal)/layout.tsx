@@ -1,4 +1,6 @@
-import type { ReactNode } from "react";
+"use client";
+
+import { ReactNode, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Activity,
@@ -7,6 +9,7 @@ import {
   LayoutDashboard,
   Sparkles,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 import { PortalSidebar } from "@/components/portal/portal-sidebar";
 
@@ -38,6 +41,40 @@ const navigation = [
 ];
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
+  const router = useRouter();
+  const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const authed = sessionStorage.getItem("admin-authenticated") === "true";
+
+    if (!authed) {
+      setIsAuthorized(false);
+      router.replace("/admin/login");
+      return;
+    }
+
+    setIsAuthorized(true);
+  }, [router]);
+
+  if (isAuthorized === null) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-950 text-slate-200">
+        <div className="space-y-3 text-center">
+          <p className="text-xs uppercase tracking-[0.3em] text-sky-300">Admin Portal</p>
+          <p className="text-sm text-slate-400">관리자 인증을 확인하고 있습니다...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthorized) {
+    return null;
+  }
+
   return (
     <div className="flex min-h-screen bg-slate-950/95 text-slate-100">
       <PortalSidebar
