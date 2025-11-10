@@ -86,6 +86,7 @@ export default function NodeRegistryPanel() {
     sshUser: "",
     sshPort: "",
   });
+  const [editingNode, setEditingNode] = useState<RegisteredNode | null>(null);
 
   const totalByStatus = useMemo(() => {
     return nodes.reduce(
@@ -146,63 +147,173 @@ export default function NodeRegistryPanel() {
       setSuccess(null);
       setSubmitting(true);
 
-      const payload = {
-        name: formState.name.trim(),
-        ipAddress: formState.ipAddress.trim(),
-        role: formState.role.trim(),
-        labels: formState.labels
+        const labels = formState.labels
           .split(",")
           .map((label) => label.trim())
-          .filter(Boolean),
+          .filter(Boolean);
+
+        const basePayload = {
+          name: formState.name.trim(),
+          ipAddress: formState.ipAddress.trim(),
+          role: formState.role.trim(),
+          labels,
           sshUser: formState.sshUser.trim() || undefined,
-          sshPort: formState.sshPort.trim()
-            ? Number.parseInt(formState.sshPort.trim(), 10)
-            : undefined,
-      };
-
-      try {
-        const response = await fetch("/api/admin/nodes", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-
-        const result = (await response.json()) as {
-          error?: string;
-          node?: RegisteredNode;
         };
 
-        if (!response.ok) {
-          throw new Error(result.error ?? "노드 등록에 실패했습니다.");
+        const portText = formState.sshPort.trim();
+        const parsedPort = portText ? Number.parseInt(portText, 10) : undefined;
+        const portValue =
+          parsedPort !== undefined && Number.isFinite(parsedPort)
+            ? parsedPort
+            : undefined;
+
+        if (portText && portValue === undefined) {
+          setSubmitting(false);
+          setError("SSH 포트는 숫자만 입력할 수 있습니다.");
+          return;
         }
 
-        setSuccess(`${result.node?.name ?? payload.name} 노드가 등록되었습니다.`);
-        setFormState({
-          name: "",
-          ipAddress: "",
-          role: "",
-          labels: "",
-          sshUser: "",
-          sshPort: "",
-        });
+        const isEditMode = Boolean(editingNode);
+        const url = isEditMode
+          ? `/api/admin/nodes/${editingNode!.id}`
+          : "/api/admin/nodes";
+        const method = isEditMode ? "PATCH" : "POST";
 
-        if (typeof window !== "undefined") {
-          window.dispatchEvent(new Event("admin-nodes:updated"));
-        } else {
-          fetchNodes();
+        const payload = {
+          ...basePayload,
+          sshPort: isEditMode
+            ? portText === "" && editingNode?.sshPort
+              ? null
+              : portValue
+            : portValue,
+        };
+
+        try {
+          const response = await fetch(url, {
+            method,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+
+          const result = (await response.json()) as {
+            error?: string;
+            node?: RegisteredNode;
+          };
+
+          if (!response.ok) {
+            throw new Error(
+              result.error ??
+                (isEditMode
+                  ? "노드 정보를 수정하지 못했습니다."
+                  : "노드 등록에 실패했습니다."),
+            );
+          }
+
+          setSuccess(
+            `${result.node?.name ?? payload.name} 노드가 ${
+              isEditMode ? "수정" : "등록"
+            }되었습니다.`,
+          );
+          setFormState({
+            name: "",
+            ipAddress: "",
+            role: "",
+            labels: "",
+            sshUser: "",
+            sshPort: "",
+          });
+          setEditingNode(null);
+
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(new Event("admin-nodes:updated"));
+          } else {
+            fetchNodes();
+          }
+        } catch (submitError) {
+          setError(
+            submitError instanceof Error
+              ? submitError.message
+              : isEditMode
+                ? "노드 정보를 수정하지 못했습니다."
+                : "노드 등록에 실패했습니다.",
+          );
+        } finally {
+          setSubmitting(false);
         }
-      } catch (submitError) {
-        setError(
-          submitError instanceof Error
-            ? submitError.message
-            : "노드 등록에 실패했습니다.",
-        );
-      } finally {
-        setSubmitting(false);
-      }
     },
-    [fetchNodes, formState],
+      [editingNode, fetchNodes, formState],
   );
+
+    const handleEdit = useCallback((node: RegisteredNode) => {
+      setEditingNode(node);
+      setFormState({
+        name: node.name,
+        ipAddress: node.ipAddress,
+        role: node.role,
+        labels: node.labels.join(", "),
+        sshUser: node.sshUser ?? "",
+        sshPort: node.sshPort ? String(node.sshPort) : "",
+      });
+      setSuccess(null);
+      setError(null);
+    }, []);
+
+    const handleCancelEdit = useCallback(() => {
+      setEditingNode(null);
+      setFormState({
+        name: "",
+        ipAddress: "",
+        role: "",
+        labels: "",
+        sshUser: "",
+        sshPort: "",
+      });
+      setError(null);
+      setSuccess(null);
+    }, []);
+
+    const handleDelete = useCallback(
+      async (node: RegisteredNode) => {
+        if (
+          typeof window === "undefined" ||
+          !window.confirm(
+            `${node.name} 노드를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`,
+          )
+        ) {
+          return;
+        }
+        setSubmitting(true);
+        setError(null);
+        setSuccess(null);
+        try {
+          const response = await fetch(`/api/admin/nodes/${node.id}`, {
+            method: "DELETE",
+          });
+          if (!response.ok && response.status !== 204) {
+            const result = await response.json();
+            throw new Error(result.error ?? "노드를 삭제하지 못했습니다.");
+          }
+          setSuccess(`${node.name} 노드가 삭제되었습니다.`);
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(new Event("admin-nodes:updated"));
+          } else {
+            fetchNodes();
+          }
+          if (editingNode?.id === node.id) {
+            handleCancelEdit();
+          }
+        } catch (deleteError) {
+          setError(
+            deleteError instanceof Error
+              ? deleteError.message
+              : "노드를 삭제하지 못했습니다.",
+          );
+        } finally {
+          setSubmitting(false);
+        }
+      },
+      [editingNode, fetchNodes, handleCancelEdit],
+    );
 
   return (
     <div className="rounded-3xl border border-white/10 bg-white/5 p-6">
@@ -326,14 +437,31 @@ export default function NodeRegistryPanel() {
                 <CheckCircle2 className="h-4 w-4" /> {success}
               </p>
             )}
-            <button
-              type="submit"
-              disabled={submitting}
-              className="flex w-full items-center justify-center gap-2 rounded-full bg-sky-500 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:opacity-70"
-            >
-              <PlusCircle className="h-4 w-4" />
-              {submitting ? "등록 중..." : "노드 등록"}
-            </button>
+            <div className="flex gap-3">
+              <button
+                type="submit"
+                disabled={submitting}
+                className="flex w-full items-center justify-center gap-2 rounded-full bg-sky-500 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                <PlusCircle className="h-4 w-4" />
+                {submitting
+                  ? editingNode
+                    ? "수정 중..."
+                    : "등록 중..."
+                  : editingNode
+                    ? "노드 수정"
+                    : "노드 등록"}
+              </button>
+              {editingNode && (
+                <button
+                  type="button"
+                  onClick={handleCancelEdit}
+                  className="rounded-full border border-white/10 px-5 py-3 text-sm font-semibold text-slate-200 transition hover:border-rose-300 hover:text-rose-200"
+                >
+                  취소
+                </button>
+              )}
+            </div>
           </form>
         </div>
 
@@ -389,18 +517,19 @@ export default function NodeRegistryPanel() {
                   <th className="px-4 py-3">레이블</th>
                   <th className="px-4 py-3">상태</th>
                   <th className="px-4 py-3">지표</th>
+                  <th className="px-4 py-3 text-right">관리</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
                 {loading ? (
                   <tr>
-                    <td colSpan={5} className="px-4 py-6 text-center text-slate-400">
+                    <td colSpan={6} className="px-4 py-6 text-center text-slate-400">
                       노드 정보를 불러오는 중입니다...
                     </td>
                   </tr>
                 ) : nodes.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-4 py-12 text-center text-slate-400">
+                    <td colSpan={6} className="px-4 py-12 text-center text-slate-400">
                       아직 등록된 노드가 없습니다. 왼쪽 폼에서 노드를 추가하세요.
                     </td>
                   </tr>
@@ -442,6 +571,22 @@ export default function NodeRegistryPanel() {
                             <p>GPU {node.telemetry.gpuUsage}%</p>
                           )}
                           <p>Latency {node.telemetry.latencyMs}ms</p>
+                        </div>
+                      </td>
+                      <td className="px-4 py-4 text-right">
+                        <div className="flex justify-end gap-2">
+                          <button
+                            onClick={() => handleEdit(node)}
+                            className="rounded-full border border-white/15 px-3 py-1 text-[11px] font-semibold text-slate-200 transition hover:border-sky-300 hover:text-sky-100"
+                          >
+                            수정
+                          </button>
+                          <button
+                            onClick={() => handleDelete(node)}
+                            className="rounded-full border border-rose-400/40 px-3 py-1 text-[11px] font-semibold text-rose-200 transition hover:border-rose-300 hover:text-rose-100"
+                          >
+                            삭제
+                          </button>
                         </div>
                       </td>
                     </tr>

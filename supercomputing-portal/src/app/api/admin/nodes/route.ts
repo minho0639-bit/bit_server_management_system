@@ -44,13 +44,27 @@ export async function POST(request: Request) {
           ? sshPort
           : undefined;
 
+    if (
+      sshPort !== undefined &&
+      sshPort !== null &&
+      (portValue === undefined || !Number.isFinite(portValue))
+    ) {
+      return NextResponse.json(
+        { error: "SSH 포트는 숫자만 입력할 수 있습니다." },
+        { status: 400 },
+      );
+    }
+
     const node = await registerNode({
       name: name ?? "",
       ipAddress: ipAddress ?? "",
       role: role ?? "",
       labels,
       sshUser,
-      sshPort: Number.isFinite(portValue as number) ? (portValue as number) : undefined,
+      sshPort:
+        portValue !== undefined && Number.isFinite(portValue)
+          ? (portValue as number)
+          : undefined,
     });
 
     const telemetry = createNodeTelemetry(node);

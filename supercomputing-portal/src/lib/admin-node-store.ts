@@ -133,6 +133,92 @@ export async function getStoredNode(id: string): Promise<StoredNode | null> {
   return node ?? null;
 }
 
+export async function updateStoredNode(
+  id: string,
+  input: {
+    name?: string;
+    ipAddress?: string;
+    role?: string;
+    labels?: string[] | string;
+    sshUser?: string;
+    sshPort?: number | null;
+  },
+): Promise<StoredNode> {
+  const nodes = await readRawNodes();
+  const targetIndex = nodes.findIndex((node) => node.id === id);
+
+  if (targetIndex === -1) {
+    throw new Error("해당 노드를 찾을 수 없습니다.");
+  }
+
+  const target = nodes[targetIndex];
+
+  const nextName = input.name?.trim() ?? target.name;
+  const nextIp = input.ipAddress?.trim() ?? target.ipAddress;
+  const nextRole = input.role?.trim() ?? target.role;
+  const nextLabels = input.labels !== undefined ? normaliseLabels(input.labels) : target.labels;
+  const nextSshUser =
+    input.sshUser !== undefined
+      ? input.sshUser.trim() || undefined
+      : target.sshUser;
+  const nextSshPort =
+    typeof input.sshPort === "number" && Number.isFinite(input.sshPort)
+      ? input.sshPort
+      : input.sshPort === null
+        ? undefined
+        : target.sshPort;
+
+  if (!nextName) {
+    throw new Error("노드 이름을 입력하세요.");
+  }
+  if (!nextIp) {
+    throw new Error("IP 주소를 입력하세요.");
+  }
+  if (!isValidIp(nextIp)) {
+    throw new Error("올바른 IPv4 또는 IPv6 주소를 입력하세요.");
+  }
+  if (!nextRole) {
+    throw new Error("노드 역할을 입력하세요.");
+  }
+
+  if (nodes.some((node, idx) => idx !== targetIndex && node.ipAddress === nextIp)) {
+    throw new Error("이미 등록된 IP 주소입니다.");
+  }
+
+  if (
+    nodes.some(
+      (node, idx) =>
+        idx !== targetIndex && node.name.toLowerCase() === nextName.toLowerCase(),
+    )
+  ) {
+    throw new Error("이미 등록된 노드 이름입니다.");
+  }
+
+  const updated: StoredNode = {
+    ...target,
+    name: nextName,
+    ipAddress: nextIp,
+    role: nextRole,
+    labels: nextLabels,
+    sshUser: nextSshUser,
+    sshPort: nextSshPort,
+  };
+
+  nodes[targetIndex] = updated;
+  await writeRawNodes(nodes);
+
+  return updated;
+}
+
+export async function deleteStoredNode(id: string): Promise<void> {
+  const nodes = await readRawNodes();
+  const nextNodes = nodes.filter((node) => node.id !== id);
+  if (nextNodes.length === nodes.length) {
+    throw new Error("해당 노드를 찾을 수 없습니다.");
+  }
+  await writeRawNodes(nextNodes);
+}
+
 export async function listNodesWithTelemetry(): Promise<NodeRecord[]> {
   const nodes = await readRawNodes();
   return nodes.map((node) => ({
