@@ -126,6 +126,40 @@ function buildSshConfig(node: StoredNode, privateKey?: Buffer): ConnectConfig {
     config.password = password;
   }
 
+  const algorithms: NonNullable<ConnectConfig["algorithms"]> = {};
+
+  const parseListEnv = (value?: string | null) =>
+    value
+      ?.split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+
+  const cipherList = parseListEnv(process.env.NODE_MONITOR_SSH_CIPHERS);
+  if (cipherList?.length) {
+    algorithms.cipher = cipherList as any;
+  }
+
+  const kexList = parseListEnv(process.env.NODE_MONITOR_SSH_KEX);
+  if (kexList?.length) {
+    algorithms.kex = kexList as any;
+  }
+
+  const macList = parseListEnv(process.env.NODE_MONITOR_SSH_MACS);
+  if (macList?.length) {
+    algorithms.mac = macList as any;
+  }
+
+  const serverHostKeyList = parseListEnv(
+    process.env.NODE_MONITOR_SSH_SERVER_HOST_KEY_ALGORITHMS,
+  );
+  if (serverHostKeyList?.length) {
+    algorithms.serverHostKey = serverHostKeyList as any;
+  }
+
+  if (Object.keys(algorithms).length > 0) {
+    config.algorithms = algorithms;
+  }
+
   return config;
 }
 
