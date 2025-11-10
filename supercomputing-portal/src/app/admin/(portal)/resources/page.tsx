@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 
 import { PortalHeader } from "@/components/portal/portal-header";
+import NodeRegistryPanel from "./node-registry-panel";
 
 const nodeSummary = [
   {
@@ -106,38 +107,40 @@ export default function AdminResourcesPage() {
             </button>
           </>
         }
-      />
+        />
 
-      <div className="flex-1 space-y-10 px-6 py-8">
-        <section className="grid gap-6 rounded-3xl border border-white/10 bg-white/5 p-6 md:grid-cols-2 xl:grid-cols-4">
-          {nodeSummary.map((node) => (
-            <div key={node.title} className="rounded-3xl border border-white/10 bg-slate-950/50 p-5">
-              <p className="text-xs uppercase tracking-[0.35em] text-slate-300/80">{node.title}</p>
-              <p className="mt-3 text-lg font-semibold text-white">
-                Ready {node.ready}/{node.capacity}
-              </p>
-              <div className="mt-4 space-y-3 text-xs text-slate-300">
-                <p>온도 {node.temp}</p>
-                <div className="space-y-1">
-                  <p>사용률</p>
-                  <div className="h-2 rounded-full bg-white/5">
-                    <div
-                      className="h-full rounded-full bg-gradient-to-r from-sky-400 via-cyan-300 to-teal-200"
-                      style={{ width: `${node.utilization}%` }}
-                    />
+        <div className="flex-1 space-y-10 px-6 py-8">
+          <NodeRegistryPanel />
+
+          <section className="grid gap-6 rounded-3xl border border-white/10 bg-white/5 p-6 md:grid-cols-2 xl:grid-cols-4">
+            {nodeSummary.map((node) => (
+              <div key={node.title} className="rounded-3xl border border-white/10 bg-slate-950/50 p-5">
+                <p className="text-xs uppercase tracking-[0.35em] text-slate-300/80">{node.title}</p>
+                <p className="mt-3 text-lg font-semibold text-white">
+                  Ready {node.ready}/{node.capacity}
+                </p>
+                <div className="mt-4 space-y-3 text-xs text-slate-300">
+                  <p>온도 {node.temp}</p>
+                  <div className="space-y-1">
+                    <p>사용률</p>
+                    <div className="h-2 rounded-full bg-white/5">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-sky-400 via-cyan-300 to-teal-200"
+                        style={{ width: `${node.utilization}%` }}
+                      />
+                    </div>
                   </div>
                 </div>
+                <Link
+                  href="/admin/resources/nodes"
+                  className="mt-4 inline-flex items-center gap-2 text-xs font-semibold text-sky-200"
+                >
+                  상세 보기
+                  <ArrowUpRight className="h-3 w-3" />
+                </Link>
               </div>
-              <Link
-                href="/admin/resources/nodes"
-                className="mt-4 inline-flex items-center gap-2 text-xs font-semibold text-sky-200"
-              >
-                상세 보기
-                <ArrowUpRight className="h-3 w-3" />
-              </Link>
-            </div>
-          ))}
-        </section>
+            ))}
+          </section>
 
         <section className="grid gap-6 lg:grid-cols-[minmax(0,_1.1fr)_minmax(0,_0.9fr)]">
           <div className="rounded-3xl border border-white/10 bg-white/5 p-6">

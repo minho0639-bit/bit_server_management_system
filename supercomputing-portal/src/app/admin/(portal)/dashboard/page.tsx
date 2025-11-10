@@ -8,11 +8,10 @@ import {
   Gauge,
   HardDrive,
   ServerCog,
-  ShieldCheck,
-  Users,
 } from "lucide-react";
 
 import { PortalHeader } from "@/components/portal/portal-header";
+import NodeMonitorOverview from "./node-monitor-overview";
 
 const opsMetrics = [
   {
@@ -89,12 +88,6 @@ const recentIncidents = [
     time: "어제 23:40",
     status: "해결",
   },
-];
-
-const operatorShifts = [
-  { name: "김도현", role: "Duty Lead", time: "08:00-16:00" },
-  { name: "이지은", role: "SRE", time: "12:00-20:00" },
-  { name: "박민수", role: "Security", time: "16:00-24:00" },
 ];
 
 export default function AdminDashboardPage() {
@@ -253,28 +246,6 @@ export default function AdminDashboardPage() {
                 ))}
               </div>
             </div>
-
-            <div className="rounded-3xl border border-white/10 bg-white/5 p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.35em] text-slate-300/80">
-                    교대 근무</p>
-                  <h3 className="mt-2 text-lg font-semibold text-white">오늘의 운영팀</h3>
-                </div>
-                <Users className="h-4 w-4 text-slate-400" />
-              </div>
-              <ul className="mt-4 space-y-3 text-sm text-slate-200">
-                {operatorShifts.map((op) => (
-                  <li key={op.name} className="flex items-center justify-between rounded-2xl border border-white/10 bg-slate-950/50 px-4 py-3">
-                    <div>
-                      <p className="font-semibold text-white">{op.name}</p>
-                      <p className="text-xs text-slate-400">{op.role}</p>
-                    </div>
-                    <span className="text-xs font-semibold text-sky-200">{op.time}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
           </div>
         </section>
 
@@ -302,33 +273,7 @@ export default function AdminDashboardPage() {
               <span className="inline-flex items-center gap-2"><span className="h-3 w-3 rounded-full bg-rose-500/80" /> NotReady</span>
             </div>
           </div>
-          <div className="rounded-3xl border border-white/10 bg-white/5 p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs uppercase tracking-[0.35em] text-slate-300/80">
-                  보안 & 정책</p>
-                <h3 className="mt-2 text-lg font-semibold text-white">규정 상태 요약</h3>
-              </div>
-              <ShieldCheck className="h-4 w-4 text-slate-400" />
-            </div>
-            <div className="mt-6 space-y-4 text-sm text-slate-200">
-              <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-slate-950/50 px-4 py-3">
-                <span>IAM 정책 동기화</span>
-                <span className="text-xs font-semibold text-emerald-200">정상</span>
-              </div>
-              <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-slate-950/50 px-4 py-3">
-                <span>감사 로그 업로드</span>
-                <span className="text-xs font-semibold text-amber-200">지연 (2분)</span>
-              </div>
-              <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-slate-950/50 px-4 py-3">
-                <span>보안 패치 상태</span>
-                <span className="text-xs font-semibold text-emerald-200">적용 완료</span>
-              </div>
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-xs text-slate-200">
-                다음 패치 윈도우는 3월 16일 02:00~04:00 예정입니다. 필요한 경우 예외 신청을 안내하세요.
-              </div>
-            </div>
-          </div>
+          <NodeMonitorOverview className="rounded-3xl border border-white/10 bg-white/5 p-6" />
         </section>
       </div>
     </div>
