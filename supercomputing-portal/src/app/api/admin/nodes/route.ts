@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
 
-import { listNodesWithTelemetry, registerNode } from "@/lib/admin-node-store";
-import { createNodeTelemetry } from "@/lib/admin-node-telemetry";
+import { listStoredNodes, registerNode } from "@/lib/admin-node-store";
 
 export async function GET() {
-  const nodes = await listNodesWithTelemetry();
+  const nodes = await listStoredNodes();
   return NextResponse.json({ nodes });
 }
 
@@ -67,14 +66,9 @@ export async function POST(request: Request) {
           : undefined,
     });
 
-    const telemetry = createNodeTelemetry(node);
-
     return NextResponse.json(
       {
-        node: {
-          ...node,
-          telemetry,
-        },
+        node,
       },
       { status: 201 },
     );

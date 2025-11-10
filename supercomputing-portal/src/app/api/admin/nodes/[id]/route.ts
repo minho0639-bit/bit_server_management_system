@@ -5,7 +5,6 @@ import {
   getStoredNode,
   updateStoredNode,
 } from "@/lib/admin-node-store";
-import { createNodeTelemetry } from "@/lib/admin-node-telemetry";
 
 interface RouteContext {
   params: {
@@ -21,8 +20,7 @@ export async function GET(_request: Request, context: RouteContext) {
       { status: 404 },
     );
   }
-  const telemetry = createNodeTelemetry(node);
-  return NextResponse.json({ node: { ...node, telemetry } });
+  return NextResponse.json({ node });
 }
 
 export async function PATCH(request: Request, context: RouteContext) {
@@ -89,8 +87,7 @@ export async function PATCH(request: Request, context: RouteContext) {
       sshPort: portValue === undefined ? undefined : portValue,
     });
 
-    const telemetry = createNodeTelemetry(updated);
-    return NextResponse.json({ node: { ...updated, telemetry } });
+    return NextResponse.json({ node: updated });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "노드 정보를 수정하지 못했습니다.";

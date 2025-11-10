@@ -19,13 +19,47 @@ import {
 
 type NodeStatus = "healthy" | "warning" | "critical";
 
-interface NodeTelemetry {
-  status: NodeStatus;
-  cpuUsage: number;
-  memoryUsage: number;
-  gpuUsage: number | null;
-  latencyMs: number;
-  lastHeartbeat: string;
+interface NodeResourceSnapshot {
+  timestamp: string;
+  cpu: {
+    usagePercent: number;
+    cores: number;
+    loadAverage: [number, number, number];
+  };
+  memory: {
+    totalMb: number;
+    usedMb: number;
+    usagePercent: number;
+  };
+  storage: {
+    filesystem: string;
+    mount: string;
+    totalGb: number;
+    usedGb: number;
+    usagePercent: number;
+  };
+  network: {
+    interface: string;
+    inboundMbps: number;
+    outboundMbps: number;
+    rxBytes: number;
+    txBytes: number;
+  };
+  gpus: Array<{
+    name: string;
+    index: number;
+    usagePercent: number;
+    memoryUsedGb: number;
+    memoryTotalGb: number;
+    temperatureC: number;
+  }>;
+  processes: Array<{
+    pid: number;
+    name: string;
+    user: string;
+    cpuPercent: number;
+    memoryPercent: number;
+  }>;
 }
 
 interface RegisteredNode {
@@ -37,7 +71,6 @@ interface RegisteredNode {
   createdAt: string;
   sshUser?: string;
   sshPort?: number;
-  telemetry: NodeTelemetry;
 }
 
 const STATUS_BADGE: Record<NodeStatus, string> = {
@@ -87,16 +120,50 @@ export default function NodeRegistryPanel() {
     sshPort: "",
   });
   const [editingNode, setEditingNode] = useState<RegisteredNode | null>(null);
+  const [nodeResources, setNodeResources] = useState<
+    Record<string, NodeResourceSnapshot | undefined>
+  >({});
+  const [resourceErrors, setResourceErrors] = useState<Record<string, string>>(
+    {},
+  );
+
+  const deriveStatus = useCallback(
+    (node: RegisteredNode): NodeStatus => {
+      const error = resourceErrors[node.id];
+      if (error) {
+        return "critical";
+      }
+      const resource = nodeResources[node.id];
+      if (!resource) {
+        return "warning";
+      }
+      const cpu = resource.cpu?.usagePercent ?? 0;
+      const memory = resource.memory?.usagePercent ?? 0;
+      let gpu = 0;
+      if (resource.gpus && resource.gpus.length > 0) {
+        gpu = Math.max(
+          ...resource.gpus.map((gpu) => gpu.usagePercent ?? 0),
+          0,
+        );
+      }
+      const maxMetric = Math.max(cpu, memory, gpu);
+      if (maxMetric >= 90) return "critical";
+      if (maxMetric >= 75) return "warning";
+      return "healthy";
+    },
+    [nodeResources, resourceErrors],
+  );
 
   const totalByStatus = useMemo(() => {
     return nodes.reduce(
       (acc, node) => {
-        acc[node.telemetry.status] += 1;
+        const status = deriveStatus(node);
+        acc[status] += 1;
         return acc;
       },
       { healthy: 0, warning: 0, critical: 0 } as Record<NodeStatus, number>,
     );
-  }, [nodes]);
+  }, [deriveStatus, nodes]);
 
   const fetchNodes = useCallback(async () => {
     setLoading(true);
@@ -111,13 +178,52 @@ export default function NodeRegistryPanel() {
         throw new Error("노드 데이터를 불러오지 못했습니다.");
       }
       const data = (await response.json()) as { nodes?: RegisteredNode[] };
-      setNodes(data.nodes ?? []);
+      const fetchedNodes = data.nodes ?? [];
+      setNodes(fetchedNodes);
+
+      const resourcesMap: Record<string, NodeResourceSnapshot | undefined> = {};
+      const errorsMap: Record<string, string> = {};
+
+      await Promise.all(
+        fetchedNodes.map(async (node) => {
+          try {
+            const res = await fetch(`/api/admin/nodes/${node.id}/resources`, {
+              method: "GET",
+              headers: { "Content-Type": "application/json" },
+              cache: "no-store",
+            });
+            if (!res.ok) {
+              const result = await res.json().catch(() => ({}));
+              throw new Error(
+                (result as { error?: string }).error ??
+                  "리소스를 수집하지 못했습니다.",
+              );
+            }
+            const result = (await res.json()) as {
+              resources: NodeResourceSnapshot;
+            };
+            resourcesMap[node.id] = result.resources;
+          } catch (resourceError) {
+            errorsMap[node.id] =
+              resourceError instanceof Error
+                ? resourceError.message
+                : "리소스를 수집하지 못했습니다.";
+            resourcesMap[node.id] = undefined;
+          }
+        }),
+      );
+
+      setNodeResources(resourcesMap);
+      setResourceErrors(errorsMap);
     } catch (fetchError) {
       setError(
         fetchError instanceof Error
           ? fetchError.message
           : "노드 데이터를 불러오지 못했습니다.",
       );
+      setNodes([]);
+      setNodeResources({});
+      setResourceErrors({});
     } finally {
       setLoading(false);
     }
@@ -299,6 +405,16 @@ export default function NodeRegistryPanel() {
           } else {
             fetchNodes();
           }
+          setNodeResources((prev) => {
+            const next = { ...prev };
+            delete next[node.id];
+            return next;
+          });
+          setResourceErrors((prev) => {
+            const next = { ...prev };
+            delete next[node.id];
+            return next;
+          });
           if (editingNode?.id === node.id) {
             handleCancelEdit();
           }
@@ -534,63 +650,103 @@ export default function NodeRegistryPanel() {
                     </td>
                   </tr>
                 ) : (
-                  nodes.map((node) => (
-                    <tr key={node.id} className="hover:bg-white/5">
-                      <td className="px-4 py-4">
-                        <p className="font-semibold text-white">{node.name}</p>
-                        <p className="text-[11px] text-slate-400">
-                          등록 {formatRelative(node.createdAt)}
-                        </p>
-                      </td>
-                      <td className="px-4 py-4">
-                        <p className="font-mono text-sm text-sky-200">{node.ipAddress}</p>
-                        <p className="text-[11px] text-slate-400">{node.role}</p>
-                      </td>
-                      <td className="px-4 py-4">
-                        <p className="flex items-center gap-2 text-[11px] text-slate-300">
-                          <Tag className="h-3 w-3 text-slate-400" />
-                          {formatLabels(node.labels)}
-                        </p>
-                      </td>
-                      <td className="px-4 py-4">
-                        <span
-                          className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-[11px] font-semibold ${STATUS_BADGE[node.telemetry.status]}`}
-                        >
-                          <span className="h-2 w-2 rounded-full bg-current" />
-                          {STATUS_LABEL[node.telemetry.status]}
-                        </span>
-                        <p className="mt-2 text-[10px] text-slate-400">
-                          최근 heartbeat {formatRelative(node.telemetry.lastHeartbeat)}
-                        </p>
-                      </td>
-                      <td className="px-4 py-4">
-                        <div className="grid gap-1 text-[11px] text-slate-300">
-                          <p>CPU {node.telemetry.cpuUsage}%</p>
-                          <p>Memory {node.telemetry.memoryUsage}%</p>
-                          {node.telemetry.gpuUsage !== null && (
-                            <p>GPU {node.telemetry.gpuUsage}%</p>
+                  nodes.map((node) => {
+                    const resource = nodeResources[node.id];
+                    const resourceError = resourceErrors[node.id];
+                    const status = deriveStatus(node);
+                    const gpuUsage =
+                      resource && resource.gpus.length > 0
+                        ? Math.max(
+                            ...resource.gpus.map((gpu) => gpu.usagePercent ?? 0),
+                            0,
+                          )
+                        : null;
+
+                    return (
+                      <tr key={node.id} className="hover:bg-white/5">
+                        <td className="px-4 py-4">
+                          <p className="font-semibold text-white">{node.name}</p>
+                          <p className="text-[11px] text-slate-400">
+                            등록 {formatRelative(node.createdAt)}
+                          </p>
+                        </td>
+                        <td className="px-4 py-4">
+                          <p className="font-mono text-sm text-sky-200">{node.ipAddress}</p>
+                          <p className="text-[11px] text-slate-400">{node.role}</p>
+                        </td>
+                        <td className="px-4 py-4">
+                          <p className="flex items-center gap-2 text-[11px] text-slate-300">
+                            <Tag className="h-3 w-3 text-slate-400" />
+                            {formatLabels(node.labels)}
+                          </p>
+                        </td>
+                        <td className="px-4 py-4">
+                          <span
+                            className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-[11px] font-semibold ${STATUS_BADGE[status]}`}
+                          >
+                            <span className="h-2 w-2 rounded-full bg-current" />
+                            {STATUS_LABEL[status]}
+                          </span>
+                          {resourceError ? (
+                            <p className="mt-2 text-[10px] text-rose-300">{resourceError}</p>
+                          ) : (
+                            <p className="mt-2 text-[10px] text-slate-400">
+                              {resource
+                                ? `수집 ${formatRelative(resource.timestamp)}`
+                                : "수집 중..."}
+                            </p>
                           )}
-                          <p>Latency {node.telemetry.latencyMs}ms</p>
-                        </div>
-                      </td>
-                      <td className="px-4 py-4 text-right">
-                        <div className="flex justify-end gap-2">
-                          <button
-                            onClick={() => handleEdit(node)}
-                            className="rounded-full border border-white/15 px-3 py-1 text-[11px] font-semibold text-slate-200 transition hover:border-sky-300 hover:text-sky-100"
-                          >
-                            수정
-                          </button>
-                          <button
-                            onClick={() => handleDelete(node)}
-                            className="rounded-full border border-rose-400/40 px-3 py-1 text-[11px] font-semibold text-rose-200 transition hover:border-rose-300 hover:text-rose-100"
-                          >
-                            삭제
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
+                        </td>
+                        <td className="px-4 py-4">
+                          <div className="grid gap-1 text-[11px] text-slate-300">
+                            <p>
+                              CPU{" "}
+                              {resource
+                                ? `${resource.cpu.usagePercent.toFixed(1)}%`
+                                : "--"}
+                            </p>
+                            <p>
+                              Memory{" "}
+                              {resource
+                                ? `${resource.memory.usagePercent.toFixed(1)}%`
+                                : "--"}
+                            </p>
+                            {gpuUsage !== null && (
+                              <p>GPU {gpuUsage.toFixed(1)}%</p>
+                            )}
+                            <p>
+                              Net In{" "}
+                              {resource
+                                ? `${resource.network.inboundMbps.toFixed(2)} Mbps`
+                                : "--"}
+                            </p>
+                            <p>
+                              Net Out{" "}
+                              {resource
+                                ? `${resource.network.outboundMbps.toFixed(2)} Mbps`
+                                : "--"}
+                            </p>
+                          </div>
+                        </td>
+                        <td className="px-4 py-4 text-right">
+                          <div className="flex justify-end gap-2">
+                            <button
+                              onClick={() => handleEdit(node)}
+                              className="rounded-full border border-white/15 px-3 py-1 text-[11px] font-semibold text-slate-200 transition hover:border-sky-300 hover:text-sky-100"
+                            >
+                              수정
+                            </button>
+                            <button
+                              onClick={() => handleDelete(node)}
+                              className="rounded-full border border-rose-400/40 px-3 py-1 text-[11px] font-semibold text-rose-200 transition hover:border-rose-300 hover:text-rose-100"
+                            >
+                              삭제
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
