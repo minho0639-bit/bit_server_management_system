@@ -71,10 +71,20 @@ export async function registerNode(input: {
   ipAddress: string;
   role: string;
   labels?: string[] | string;
+  sshUser?: string;
+  sshPort?: number;
 }): Promise<StoredNode> {
   const name = input.name?.trim();
   const ipAddress = input.ipAddress?.trim();
   const role = input.role?.trim();
+  const sshUser =
+    typeof input.sshUser === "string" && input.sshUser.trim().length > 0
+      ? input.sshUser.trim()
+      : undefined;
+  const sshPort =
+    typeof input.sshPort === "number" && Number.isFinite(input.sshPort)
+      ? input.sshPort
+      : undefined;
 
   if (!name) {
     throw new Error("노드 이름을 입력하세요.");
@@ -107,6 +117,8 @@ export async function registerNode(input: {
     role,
     labels,
     createdAt: new Date().toISOString(),
+    sshUser,
+    sshPort,
   };
 
   nodes.push(newNode);

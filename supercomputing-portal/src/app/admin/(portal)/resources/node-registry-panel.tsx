@@ -35,6 +35,8 @@ interface RegisteredNode {
   role: string;
   labels: string[];
   createdAt: string;
+  sshUser?: string;
+  sshPort?: number;
   telemetry: NodeTelemetry;
 }
 
@@ -81,6 +83,8 @@ export default function NodeRegistryPanel() {
     ipAddress: "",
     role: "",
     labels: "",
+    sshUser: "",
+    sshPort: "",
   });
 
   const totalByStatus = useMemo(() => {
@@ -150,6 +154,10 @@ export default function NodeRegistryPanel() {
           .split(",")
           .map((label) => label.trim())
           .filter(Boolean),
+          sshUser: formState.sshUser.trim() || undefined,
+          sshPort: formState.sshPort.trim()
+            ? Number.parseInt(formState.sshPort.trim(), 10)
+            : undefined,
       };
 
       try {
@@ -169,7 +177,14 @@ export default function NodeRegistryPanel() {
         }
 
         setSuccess(`${result.node?.name ?? payload.name} 노드가 등록되었습니다.`);
-        setFormState({ name: "", ipAddress: "", role: "", labels: "" });
+        setFormState({
+          name: "",
+          ipAddress: "",
+          role: "",
+          labels: "",
+          sshUser: "",
+          sshPort: "",
+        });
 
         if (typeof window !== "undefined") {
           window.dispatchEvent(new Event("admin-nodes:updated"));
@@ -266,6 +281,39 @@ export default function NodeRegistryPanel() {
                 }
                 className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-white outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-400/40"
                 placeholder="zone-a, gpu, maintenance"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-300">
+                SSH 사용자 (선택)
+              </label>
+              <input
+                type="text"
+                value={formState.sshUser}
+                onChange={(event) =>
+                  setFormState((prev) => ({ ...prev, sshUser: event.target.value }))
+                }
+                className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-white outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-400/40"
+                placeholder="기본값 사용 시 비워두세요"
+              />
+              <p className="text-[11px] text-slate-400">
+                비워두면 서버 환경 변수 <code>NODE_MONITOR_DEFAULT_SSH_USER</code> 값을 사용합니다.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-300">
+                SSH 포트 (선택)
+              </label>
+              <input
+                type="number"
+                min={1}
+                max={65535}
+                value={formState.sshPort}
+                onChange={(event) =>
+                  setFormState((prev) => ({ ...prev, sshPort: event.target.value }))
+                }
+                className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-white outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-400/40"
+                placeholder="기본값 22"
               />
             </div>
             {error && (

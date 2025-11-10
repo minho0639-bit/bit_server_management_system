@@ -27,19 +27,30 @@ export async function POST(request: Request) {
     );
   }
 
-  const { name, ipAddress, role, labels } = payload as {
+  const { name, ipAddress, role, labels, sshUser, sshPort } = payload as {
     name?: string;
     ipAddress?: string;
     role?: string;
     labels?: string[] | string;
+    sshUser?: string;
+    sshPort?: number | string;
   };
 
   try {
+    const portValue =
+      typeof sshPort === "string"
+        ? Number.parseInt(sshPort, 10)
+        : typeof sshPort === "number"
+          ? sshPort
+          : undefined;
+
     const node = await registerNode({
       name: name ?? "",
       ipAddress: ipAddress ?? "",
       role: role ?? "",
       labels,
+      sshUser,
+      sshPort: Number.isFinite(portValue as number) ? (portValue as number) : undefined,
     });
 
     const telemetry = createNodeTelemetry(node);

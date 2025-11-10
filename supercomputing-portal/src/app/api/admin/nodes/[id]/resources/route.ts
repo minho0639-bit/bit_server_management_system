@@ -28,17 +28,32 @@ export async function GET(_request: Request, context: RouteContext) {
     );
   }
 
-  const resources = createNodeResourceSnapshot(node);
+  try {
+    const resources = await createNodeResourceSnapshot(node);
 
-  return NextResponse.json({
-    node: {
-      id: node.id,
-      name: node.name,
-      ipAddress: node.ipAddress,
-      role: node.role,
-      labels: node.labels,
-      createdAt: node.createdAt,
-    },
-    resources,
-  });
+    return NextResponse.json({
+      node: {
+        id: node.id,
+        name: node.name,
+        ipAddress: node.ipAddress,
+        role: node.role,
+        labels: node.labels,
+        createdAt: node.createdAt,
+        sshUser: node.sshUser,
+        sshPort: node.sshPort,
+      },
+      resources,
+    });
+  } catch (error) {
+    console.error("[nodes.resources] 리소스 수집 실패:", error);
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "노드 리소스를 수집하지 못했습니다.",
+      },
+      { status: 502 },
+    );
+  }
 }

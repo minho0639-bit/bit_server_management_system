@@ -5,6 +5,8 @@ export interface StoredNode {
   role: string;
   labels: string[];
   createdAt: string;
+  sshUser?: string;
+  sshPort?: number;
 }
 
 export interface NodeTelemetry {
