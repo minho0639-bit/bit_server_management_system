@@ -3,14 +3,17 @@ import { NextResponse } from "next/server";
 import { getStoredNode } from "@/lib/admin-node-store";
 import { createNodeResourceSnapshot } from "@/lib/admin-node-resources";
 
-interface RouteContext {
-  params: {
-    id: string;
-  };
+type RouteParams = { id: string };
+type RouteContext = { params: RouteParams | Promise<RouteParams> };
+
+async function resolveParams(
+  params: RouteContext["params"],
+): Promise<RouteParams> {
+  return params instanceof Promise ? await params : params;
 }
 
 export async function GET(_request: Request, context: RouteContext) {
-  const nodeId = context.params.id;
+  const { id: nodeId } = await resolveParams(context.params);
 
   if (!nodeId) {
     return NextResponse.json(

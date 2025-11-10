@@ -6,14 +6,18 @@ import {
   updateStoredNode,
 } from "@/lib/admin-node-store";
 
-interface RouteContext {
-  params: {
-    id: string;
-  };
+type RouteParams = { id: string };
+type RouteContext = { params: RouteParams | Promise<RouteParams> };
+
+async function resolveParams(
+  params: RouteContext["params"],
+): Promise<RouteParams> {
+  return params instanceof Promise ? await params : params;
 }
 
 export async function GET(_request: Request, context: RouteContext) {
-  const node = await getStoredNode(context.params.id);
+  const { id } = await resolveParams(context.params);
+  const node = await getStoredNode(id);
   if (!node) {
     return NextResponse.json(
       { error: "해당 노드를 찾을 수 없습니다." },
@@ -78,7 +82,9 @@ export async function PATCH(request: Request, context: RouteContext) {
       );
     }
 
-    const updated = await updateStoredNode(context.params.id, {
+    const { id } = await resolveParams(context.params);
+
+    const updated = await updateStoredNode(id, {
       name,
       ipAddress,
       role,
@@ -97,7 +103,8 @@ export async function PATCH(request: Request, context: RouteContext) {
 
 export async function DELETE(_request: Request, context: RouteContext) {
   try {
-    await deleteStoredNode(context.params.id);
+    const { id } = await resolveParams(context.params);
+    await deleteStoredNode(id);
     return new Response(null, { status: 204 });
   } catch (error) {
     const message =
