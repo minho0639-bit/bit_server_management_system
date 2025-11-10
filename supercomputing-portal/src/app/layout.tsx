@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "QuantumFlow HPC Portal",
+  title: "HPC Portal",
   description:
     "국가 슈퍼컴퓨팅 센터 스타일의 고성능 컴퓨팅 자원 신청 및 운영 포털",
 };

@@ -108,50 +108,50 @@ export default function Home() {
       <div className="absolute inset-y-0 right-0 -z-10 hidden w-1/2 bg-[radial-gradient(circle_at_top,_rgba(37,99,235,0.18),_transparent_55%)] sm:block" />
 
       <header className="border-b border-white/10 bg-slate-950/40 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5">
-          <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-sky-500/20 text-sky-300">
-              <svg
-                viewBox="0 0 24 24"
-                className="h-6 w-6"
-                aria-hidden
-              >
-                <path
-                  d="M4 7.5 12 3l8 4.5v9L12 21l-8-4.5v-9Z"
-                  fill="currentColor"
-                  opacity="0.2"
-                />
-                <path
-                  d="M12 3 4 7.5m8-4.5 8 4.5m-8-4.5v9m-8-4.5v9L12 21l8-4.5v-9"
-                  stroke="currentColor"
-                  strokeWidth="1.3"
-                  strokeLinejoin="round"
-                />
-              </svg>
+          <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5">
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-full bg-sky-500/20 text-sky-300">
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-6 w-6"
+                  aria-hidden
+                >
+                  <path
+                    d="M4 7.5 12 3l8 4.5v9L12 21l-8-4.5v-9Z"
+                    fill="currentColor"
+                    opacity="0.2"
+                  />
+                  <path
+                    d="M12 3 4 7.5m8-4.5 8 4.5m-8-4.5v9m-8-4.5v9L12 21l8-4.5v-9"
+                    stroke="currentColor"
+                    strokeWidth="1.3"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </div>
+              <div>
+                <p className="text-sm uppercase tracking-[0.35em] text-sky-300">
+                  QuantumFlow
+                </p>
+                <p className="text-lg font-semibold text-slate-100">
+                  AI 기반 슈퍼컴퓨팅 포털
+                </p>
+              </div>
             </div>
-            <div>
-              <p className="text-sm uppercase tracking-[0.35em] text-sky-300">
-                QuantumFlow
-              </p>
-              <p className="text-lg font-semibold text-slate-100">
-                국가 슈퍼컴퓨팅 포털
-              </p>
-            </div>
-          </div>
-          <nav className="hidden items-center gap-10 text-sm font-medium text-slate-200 md:flex">
-            <Link href="#services" className="transition hover:text-sky-200">
-              서비스
-            </Link>
-            <Link href="#portals" className="transition hover:text-sky-200">
-              포털 기능
-            </Link>
-            <Link href="#process" className="transition hover:text-sky-200">
-              운영 프로세스
-            </Link>
-            <Link href="#support" className="transition hover:text-sky-200">
-              지원채널
-            </Link>
-          </nav>
+            <nav className="hidden items-center gap-10 text-sm font-medium text-slate-200 md:flex">
+              <Link href="#services" className="transition hover:text-sky-200">
+                서비스
+              </Link>
+              <Link href="#portals" className="transition hover:text-sky-200">
+                포털 기능
+              </Link>
+              <Link href="#process" className="transition hover:text-sky-200">
+                운영 프로세스
+              </Link>
+              <Link href="#support" className="transition hover:text-sky-200">
+                지원채널
+              </Link>
+            </nav>
           <div className="flex items-center gap-3">
             <Link
               href="/user/dashboard"
