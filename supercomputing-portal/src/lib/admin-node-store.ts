@@ -115,6 +115,12 @@ export async function registerNode(input: {
   return newNode;
 }
 
+export async function getStoredNode(id: string): Promise<StoredNode | null> {
+  const nodes = await readRawNodes();
+  const node = nodes.find((entry) => entry.id === id);
+  return node ?? null;
+}
+
 export async function listNodesWithTelemetry(): Promise<NodeRecord[]> {
   const nodes = await readRawNodes();
   return nodes.map((node) => ({
