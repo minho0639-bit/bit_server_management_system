@@ -17,50 +17,9 @@ import {
   Tag,
 } from "lucide-react";
 
-type NodeStatus = "healthy" | "warning" | "critical";
+import type { NodeResourceSnapshot } from "@/lib/admin-node-resources";
 
-interface NodeResourceSnapshot {
-  timestamp: string;
-  cpu: {
-    usagePercent: number;
-    cores: number;
-    loadAverage: [number, number, number];
-  };
-  memory: {
-    totalMb: number;
-    usedMb: number;
-    usagePercent: number;
-  };
-  storage: {
-    filesystem: string;
-    mount: string;
-    totalGb: number;
-    usedGb: number;
-    usagePercent: number;
-  };
-  network: {
-    interface: string;
-    inboundMbps: number;
-    outboundMbps: number;
-    rxBytes: number;
-    txBytes: number;
-  };
-  gpus: Array<{
-    name: string;
-    index: number;
-    usagePercent: number;
-    memoryUsedGb: number;
-    memoryTotalGb: number;
-    temperatureC: number;
-  }>;
-  processes: Array<{
-    pid: number;
-    name: string;
-    user: string;
-    cpuPercent: number;
-    memoryPercent: number;
-  }>;
-}
+type NodeStatus = "healthy" | "warning" | "critical";
 
 interface RegisteredNode {
   id: string;

@@ -14,16 +14,9 @@ import {
   SignalHigh,
 } from "lucide-react";
 
-type NodeStatus = "healthy" | "warning" | "critical";
+import type { NodeResourceSnapshot } from "@/lib/admin-node-resources";
 
-interface NodeTelemetry {
-  status: NodeStatus;
-  cpuUsage: number;
-  memoryUsage: number;
-  gpuUsage: number | null;
-  latencyMs: number;
-  lastHeartbeat: string;
-}
+type NodeStatus = "healthy" | "warning" | "critical";
 
 interface RegisteredNode {
   id: string;
@@ -32,7 +25,8 @@ interface RegisteredNode {
   role: string;
   labels: string[];
   createdAt: string;
-  telemetry: NodeTelemetry;
+  sshUser?: string;
+  sshPort?: number;
 }
 
 interface NodeMonitorOverviewProps {
@@ -66,6 +60,12 @@ export default function NodeMonitorOverview({ className }: NodeMonitorOverviewPr
   const [nodes, setNodes] = useState<RegisteredNode[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [nodeResources, setNodeResources] = useState<
+    Record<string, NodeResourceSnapshot | undefined>
+  >({});
+  const [resourceErrors, setResourceErrors] = useState<Record<string, string>>(
+    {},
+  );
 
   const fetchNodes = useCallback(async () => {
     try {
@@ -78,7 +78,43 @@ export default function NodeMonitorOverview({ className }: NodeMonitorOverviewPr
         throw new Error("노드 상태를 불러오지 못했습니다.");
       }
       const data = (await response.json()) as { nodes?: RegisteredNode[] };
-      setNodes(data.nodes ?? []);
+      const fetchedNodes = data.nodes ?? [];
+      setNodes(fetchedNodes);
+
+      const resourcesMap: Record<string, NodeResourceSnapshot | undefined> = {};
+      const errorsMap: Record<string, string> = {};
+
+      await Promise.all(
+        fetchedNodes.map(async (node) => {
+          try {
+            const res = await fetch(`/api/admin/nodes/${node.id}/resources`, {
+              method: "GET",
+              headers: { "Content-Type": "application/json" },
+              cache: "no-store",
+            });
+            if (!res.ok) {
+              const result = await res.json().catch(() => ({}));
+              throw new Error(
+                (result as { error?: string }).error ??
+                  "리소스를 수집하지 못했습니다.",
+              );
+            }
+            const result = (await res.json()) as {
+              resources: NodeResourceSnapshot;
+            };
+            resourcesMap[node.id] = result.resources;
+          } catch (resourceError) {
+            errorsMap[node.id] =
+              resourceError instanceof Error
+                ? resourceError.message
+                : "리소스를 수집하지 못했습니다.";
+            resourcesMap[node.id] = undefined;
+          }
+        }),
+      );
+
+      setNodeResources(resourcesMap);
+      setResourceErrors(errorsMap);
       setError(null);
     } catch (fetchError) {
       setError(
@@ -86,6 +122,8 @@ export default function NodeMonitorOverview({ className }: NodeMonitorOverviewPr
           ? fetchError.message
           : "노드 상태를 불러오지 못했습니다.",
       );
+      setNodeResources({});
+      setResourceErrors({});
     } finally {
       setLoading(false);
     }
@@ -108,6 +146,29 @@ export default function NodeMonitorOverview({ className }: NodeMonitorOverviewPr
     };
   }, [fetchNodes]);
 
+  const deriveStatus = useCallback(
+    (nodeId: string): NodeStatus => {
+      if (resourceErrors[nodeId]) {
+        return "critical";
+      }
+      const resource = nodeResources[nodeId];
+      if (!resource) {
+        return "warning";
+      }
+      const cpu = resource.cpu?.usagePercent ?? 0;
+      const memory = resource.memory?.usagePercent ?? 0;
+      const gpu =
+        resource.gpus && resource.gpus.length > 0
+          ? Math.max(...resource.gpus.map((gpu) => gpu.usagePercent ?? 0), 0)
+          : 0;
+      const maxMetric = Math.max(cpu, memory, gpu);
+      if (maxMetric >= 90) return "critical";
+      if (maxMetric >= 75) return "warning";
+      return "healthy";
+    },
+    [nodeResources, resourceErrors],
+  );
+
   const aggregates = useMemo(() => {
     if (nodes.length === 0) {
       return {
@@ -116,15 +177,26 @@ export default function NodeMonitorOverview({ className }: NodeMonitorOverviewPr
         critical: 0,
         avgCpu: 0,
         avgMemory: 0,
-        worstLatency: 0,
+        peakTraffic: 0,
+        sampleCount: 0,
       };
     }
-    const totals = nodes.reduce(
+    return nodes.reduce(
       (acc, node) => {
-        acc[node.telemetry.status] += 1;
-        acc.avgCpu += node.telemetry.cpuUsage;
-        acc.avgMemory += node.telemetry.memoryUsage;
-        acc.worstLatency = Math.max(acc.worstLatency, node.telemetry.latencyMs);
+        const status = deriveStatus(node.id);
+        acc[status] += 1;
+
+        const resource = nodeResources[node.id];
+        if (resource) {
+          acc.avgCpu += resource.cpu.usagePercent;
+          acc.avgMemory += resource.memory.usagePercent;
+          acc.peakTraffic = Math.max(
+            acc.peakTraffic,
+            resource.network.inboundMbps,
+            resource.network.outboundMbps,
+          );
+          acc.sampleCount += 1;
+        }
         return acc;
       },
       {
@@ -133,19 +205,47 @@ export default function NodeMonitorOverview({ className }: NodeMonitorOverviewPr
         critical: 0,
         avgCpu: 0,
         avgMemory: 0,
-        worstLatency: 0,
+        peakTraffic: 0,
+        sampleCount: 0,
       },
     );
-    totals.avgCpu = Math.round(totals.avgCpu / nodes.length);
-    totals.avgMemory = Math.round(totals.avgMemory / nodes.length);
-    return totals;
-  }, [nodes]);
+  }, [deriveStatus, nodeResources, nodes]);
+
+  const averages = useMemo(() => {
+    if (aggregates.sampleCount === 0) {
+      return {
+        avgCpu: 0,
+        avgMemory: 0,
+        peakTraffic: 0,
+      };
+    }
+    return {
+      avgCpu: Number((aggregates.avgCpu / aggregates.sampleCount).toFixed(1)),
+      avgMemory: Number(
+        (aggregates.avgMemory / aggregates.sampleCount).toFixed(1),
+      ),
+      peakTraffic: Number(aggregates.peakTraffic.toFixed(2)),
+    };
+  }, [aggregates]);
 
   const topNodes = useMemo(() => {
-    return [...nodes]
-      .sort((a, b) => b.telemetry.cpuUsage - a.telemetry.cpuUsage)
-      .slice(0, 4);
-  }, [nodes]);
+    const enriched = nodes
+      .map((node) => ({
+        node,
+        resource: nodeResources[node.id],
+        status: deriveStatus(node.id),
+        error: resourceErrors[node.id],
+      }))
+      .filter((entry) => entry.resource);
+
+    enriched.sort(
+      (a, b) =>
+        (b.resource?.cpu.usagePercent ?? 0) -
+        (a.resource?.cpu.usagePercent ?? 0),
+    );
+
+    return enriched.slice(0, 4);
+  }, [deriveStatus, nodeResources, nodes, resourceErrors]);
 
   return (
     <div
@@ -184,7 +284,7 @@ export default function NodeMonitorOverview({ className }: NodeMonitorOverviewPr
             평균 CPU
           </p>
           <p className="mt-2 text-2xl font-semibold text-sky-200">
-            {aggregates.avgCpu}%
+            {averages.avgCpu}%
           </p>
         </div>
         <div className="rounded-2xl border border-white/10 bg-slate-900/40 p-4">
@@ -192,15 +292,15 @@ export default function NodeMonitorOverview({ className }: NodeMonitorOverviewPr
             평균 메모리
           </p>
           <p className="mt-2 text-2xl font-semibold text-sky-200">
-            {aggregates.avgMemory}%
+            {averages.avgMemory}%
           </p>
         </div>
         <div className="rounded-2xl border border-white/10 bg-slate-900/40 p-4">
           <p className="text-[10px] uppercase tracking-widest text-slate-400">
-            최고 지연
+            최고 트래픽
           </p>
           <p className="mt-2 text-2xl font-semibold text-amber-200">
-            {aggregates.worstLatency}ms
+            {averages.peakTraffic} Mbps
           </p>
         </div>
       </div>
@@ -239,11 +339,11 @@ export default function NodeMonitorOverview({ className }: NodeMonitorOverviewPr
           <p className="text-sm text-rose-200">{error}</p>
         ) : topNodes.length === 0 ? (
           <p className="text-sm text-slate-400">
-            등록된 노드가 없습니다. 자원 & 노드 페이지에서 노드를 추가하세요.
+            수집된 노드가 없습니다. 자원 & 노드 페이지에서 노드를 추가하세요.
           </p>
         ) : (
           <div className="space-y-3">
-            {topNodes.map((node) => (
+            {topNodes.map(({ node, resource, status, error: statusError }) => (
               <div
                 key={node.id}
                 className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-xs text-slate-200"
@@ -260,15 +360,22 @@ export default function NodeMonitorOverview({ className }: NodeMonitorOverviewPr
                       CPU / Memory
                     </p>
                     <p className="text-sm font-semibold text-white">
-                      {node.telemetry.cpuUsage}% / {node.telemetry.memoryUsage}%
+                      {resource
+                        ? `${resource.cpu.usagePercent.toFixed(1)}% / ${resource.memory.usagePercent.toFixed(1)}%`
+                        : "-- / --"}
                     </p>
                   </div>
                   <div className="text-right">
                     <p className="text-[10px] uppercase tracking-widest text-slate-400">
-                      지연
+                      트래픽
                     </p>
                     <p className="text-sm font-semibold text-amber-200">
-                      {node.telemetry.latencyMs}ms
+                      {resource
+                        ? `${Math.max(
+                            resource.network.inboundMbps,
+                            resource.network.outboundMbps,
+                          ).toFixed(2)} Mbps`
+                        : "--"}
                     </p>
                   </div>
                   <div className="text-right">
@@ -276,15 +383,19 @@ export default function NodeMonitorOverview({ className }: NodeMonitorOverviewPr
                       상태
                     </p>
                     <p className="text-sm font-semibold">
-                      {STATUS_TEXT[node.telemetry.status]}
+                      {STATUS_TEXT[status]}
                     </p>
                   </div>
                   <div className="text-right">
                     <p className="text-[10px] uppercase tracking-widest text-slate-400">
-                      Heartbeat
+                      수집 시각
                     </p>
                     <p className="text-sm font-semibold text-slate-300">
-                      {formatRelative(node.telemetry.lastHeartbeat)}
+                      {resource
+                        ? formatRelative(resource.timestamp)
+                        : statusError
+                          ? "오류"
+                          : "수집 중"}
                     </p>
                   </div>
                   <SignalHigh className="h-4 w-4 text-sky-200" />

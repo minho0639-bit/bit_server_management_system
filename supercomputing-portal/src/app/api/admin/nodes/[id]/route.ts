@@ -98,7 +98,7 @@ export async function PATCH(request: Request, context: RouteContext) {
 export async function DELETE(_request: Request, context: RouteContext) {
   try {
     await deleteStoredNode(context.params.id);
-    return NextResponse.json({}, { status: 204 });
+    return new Response(null, { status: 204 });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "노드를 삭제하지 못했습니다.";
