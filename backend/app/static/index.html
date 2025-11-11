@@ -352,25 +352,27 @@
       </section>
     </main>
     <script>
-      const gaugeGrid = document.getElementById("gaugeGrid");
-      const networkStats = document.getElementById("networkStats");
-      const metricTimestamp = document.getElementById("metricTimestamp");
-      const syslogTable = document.getElementById("syslogTable");
-      const ipmiTable = document.getElementById("ipmiTable");
-      const syslogCount = document.getElementById("syslogCount");
-      const ipmiCount = document.getElementById("ipmiCount");
-      const lastUpdated = document.getElementById("lastUpdated");
+        const gaugeGrid = document.getElementById("gaugeGrid");
+        const networkStats = document.getElementById("networkStats");
+        const metricTimestamp = document.getElementById("metricTimestamp");
+        const syslogTable = document.getElementById("syslogTable");
+        const ipmiTable = document.getElementById("ipmiTable");
+        const syslogCount = document.getElementById("syslogCount");
+        const ipmiCount = document.getElementById("ipmiCount");
+        const lastUpdated = document.getElementById("lastUpdated");
 
-      const gaugeConfig = [
-        { key: "cpu_percent", label: "CPU 사용률", color: "#6366f1" },
-        { key: "memory_percent", label: "메모리 사용률", color: "#22d3ee" },
-        { key: "disk_percent", label: "디스크 사용률", color: "#f59e0b" },
-      ];
+        const gaugeConfig = [
+          { key: "cpu_percent", label: "CPU 사용률", color: "#6366f1" },
+          { key: "memory_percent", label: "메모리 사용률", color: "#22d3ee" },
+          { key: "disk_percent", label: "디스크 사용률", color: "#f59e0b" },
+        ];
 
-      const networkConfig = [
-        { key: "net_sent", label: "송신 대역폭", suffix: " MB" },
-        { key: "net_recv", label: "수신 대역폭", suffix: " MB" },
-      ];
+        const networkConfig = [
+          { key: "net_sent", label: "송신 대역폭", suffix: " MB/s" },
+          { key: "net_recv", label: "수신 대역폭", suffix: " MB/s" },
+        ];
+
+        const TZ_PATTERN = /(?:Z|[+-]\d\d:\d\d)$/;
 
       async function fetchJSON(url) {
         const response = await fetch(url, { cache: "no-store" });
@@ -378,6 +380,21 @@
           throw new Error(`요청 실패: ${response.status}`);
         }
         return response.json();
+      }
+
+      function normalizeISO(stamp) {
+        if (!stamp) return null;
+        const trimmed = stamp.trim();
+        if (!trimmed) return null;
+        return TZ_PATTERN.test(trimmed) ? trimmed : `${trimmed}Z`;
+      }
+
+      function formatTimestamp(stamp) {
+        const iso = normalizeISO(stamp);
+        if (!iso) return null;
+        const date = new Date(iso);
+        if (Number.isNaN(date.getTime())) return null;
+        return date.toLocaleString();
       }
 
       function clampPercent(value) {
@@ -398,8 +415,9 @@
 
         const latest = metrics[0];
         const stamp = latest.sampled_at || latest.recorded_at || "";
-        metricTimestamp.textContent = stamp
-          ? `샘플 시각: ${stamp.replace("T", " ").slice(0, 19)}`
+        const localized = formatTimestamp(stamp);
+        metricTimestamp.textContent = localized
+          ? `샘플 시각: ${localized}`
           : "샘플 시각 정보 없음";
 
         gaugeConfig.forEach((config) => {
@@ -447,11 +465,16 @@
 
         rows.forEach((row) => {
           const tr = document.createElement("tr");
-          tr.innerHTML = `
-            <td>${row.recorded_at}</td>
-            <td>${row.source_timestamp ?? "-"}</td>
-            <td>${row.message}</td>
-          `;
+          const recorded = formatTimestamp(row.recorded_at) ?? row.recorded_at ?? "-";
+          const source = formatTimestamp(row.source_timestamp) ?? row.source_timestamp ?? "-";
+          const message = row.message ?? "-";
+
+          [recorded, source, message].forEach((value) => {
+            const td = document.createElement("td");
+            td.textContent = value;
+            tr.appendChild(td);
+          });
+
           target.appendChild(tr);
         });
       }

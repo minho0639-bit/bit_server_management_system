@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, List
 
@@ -37,7 +37,7 @@ def ingest_metric(metric: MetricIn, conn=Depends(get_db)) -> dict[str, Any]:
         VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
         (
-            datetime.utcnow().isoformat(),
+            datetime.now(timezone.utc).isoformat(),
             metric.timestamp.isoformat(),
             metric.cpu_percent,
             metric.memory_percent,
@@ -78,7 +78,7 @@ def ingest_syslog(payload: LogPayload, conn=Depends(get_db)) -> dict[str, Any]:
         """,
         [
             (
-                datetime.utcnow().isoformat(),
+                datetime.now(timezone.utc).isoformat(),
                 entry.timestamp.isoformat(),
                 entry.message,
             )
@@ -117,7 +117,7 @@ def ingest_ipmi(payload: LogPayload, conn=Depends(get_db)) -> dict[str, Any]:
         """,
         [
             (
-                datetime.utcnow().isoformat(),
+                datetime.now(timezone.utc).isoformat(),
                 entry.timestamp.isoformat() if entry.timestamp else None,
                 entry.message,
             )

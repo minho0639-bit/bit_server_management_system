@@ -6,9 +6,10 @@ import os
 import shutil
 import subprocess
 import time
-from datetime import datetime
+import re
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import psutil
 import requests
@@ -18,6 +19,10 @@ SYSLOG_PATH = Path("/var/log/syslog")
 
 SYSLOG_WARNING_EMITTED = False
 IPMI_WARNING_EMITTED = False
+IFTOP_AVAILABLE = shutil.which("iftop") is not None
+IFTOP_WARNING_EMITTED = False
+
+RATE_PATTERN = re.compile(r"([\d.]+)\s*([kmg]?b)(?:/s)?", re.IGNORECASE)
 
 
 def load_state() -> Dict[str, Any]:
@@ -35,19 +40,122 @@ def save_state(state: Dict[str, Any]) -> None:
         json.dump(state, fp, indent=2)
 
 
-def collect_metrics() -> Dict[str, Any]:
+def utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def parse_rate_token(token: str) -> Optional[float]:
+    match = RATE_PATTERN.search(token)
+    if not match:
+        return None
+    value = float(match.group(1))
+    unit = match.group(2).lower()
+    if unit == "b":
+        return value / (1024 * 1024)
+    if unit == "kb":
+        return value / 1024
+    if unit == "mb":
+        return value
+    if unit == "gb":
+        return value * 1024
+    return None
+
+
+def collect_network_via_iftop() -> Optional[Tuple[float, float]]:
+    global IFTOP_WARNING_EMITTED
+    if not IFTOP_AVAILABLE:
+        return None
+
+    command = ["iftop", "-t", "-s", "1", "-n", "-B"]
+    try:
+        result = subprocess.run(
+            command,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except (FileNotFoundError, PermissionError):
+        return None
+    except subprocess.SubprocessError as exc:
+        if not IFTOP_WARNING_EMITTED:
+            print(f"[WARN] iftop command failed: {exc}")
+            IFTOP_WARNING_EMITTED = True
+        return None
+
+    if IFTOP_WARNING_EMITTED:
+        print("[INFO] iftop network collection restored.")
+        IFTOP_WARNING_EMITTED = False
+
+    send_rate: Optional[float] = None
+    recv_rate: Optional[float] = None
+    for line in result.stdout.splitlines():
+        stripped = line.strip()
+        lower = stripped.lower()
+        if lower.startswith("total send rate"):
+            send_rate = parse_rate_token(stripped.split(":", 1)[-1])
+        elif lower.startswith("total receive rate"):
+            recv_rate = parse_rate_token(stripped.split(":", 1)[-1])
+
+    if send_rate is None or recv_rate is None:
+        return None
+    return send_rate, recv_rate
+
+
+def collect_network_via_psutil(state: Dict[str, Any]) -> Tuple[float, float]:
+    now = time.monotonic()
+    counters = psutil.net_io_counters()
+
+    prev = state.get("net_prev") or {}
+    prev_time = prev.get("timestamp")
+    prev_sent = prev.get("bytes_sent", counters.bytes_sent)
+    prev_recv = prev.get("bytes_recv", counters.bytes_recv)
+
+    if prev_time is None:
+        sent_rate = recv_rate = 0.0
+    else:
+        interval = max(now - prev_time, 1e-3)
+        sent_rate = max(0.0, (counters.bytes_sent - prev_sent) / interval) / (1024 * 1024)
+        recv_rate = max(0.0, (counters.bytes_recv - prev_recv) / interval) / (1024 * 1024)
+
+    state["net_prev"] = {
+        "timestamp": now,
+        "bytes_sent": counters.bytes_sent,
+        "bytes_recv": counters.bytes_recv,
+    }
+    return sent_rate, recv_rate
+
+
+def refresh_net_snapshot(state: Dict[str, Any]) -> None:
+    counters = psutil.net_io_counters()
+    state["net_prev"] = {
+        "timestamp": time.monotonic(),
+        "bytes_sent": counters.bytes_sent,
+        "bytes_recv": counters.bytes_recv,
+    }
+
+
+def collect_network_rates(state: Dict[str, Any]) -> Tuple[float, float]:
+    rates = collect_network_via_iftop()
+    if rates is not None:
+        refresh_net_snapshot(state)
+        return rates
+    return collect_network_via_psutil(state)
+
+
+def collect_metrics(state: Dict[str, Any]) -> Dict[str, Any]:
     cpu_percent = psutil.cpu_percent(interval=1)
     memory = psutil.virtual_memory()
     disk = psutil.disk_usage("/")
-    net = psutil.net_io_counters()
+    net_sent_rate, net_recv_rate = collect_network_rates(state)
 
     metric = {
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": utc_now_iso(),
         "cpu_percent": cpu_percent,
         "memory_percent": memory.percent,
         "disk_percent": disk.percent,
-        "net_sent": net.bytes_sent / (1024 * 1024),
-        "net_recv": net.bytes_recv / (1024 * 1024),
+        "net_sent": net_sent_rate,
+        "net_recv": net_recv_rate,
     }
     return metric
 
@@ -91,7 +199,7 @@ def read_syslog(offset: int = 0, max_bytes: int = 1024 * 512) -> Tuple[int, List
             continue
         entries.append(
             {
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": utc_now_iso(),
                 "message": stripped,
                 "source_timestamp": None,
             }
@@ -130,7 +238,7 @@ def collect_ipmi() -> Tuple[str, List[Dict[str, Any]]]:
     digest = str(hash(output))
     entries = [
         {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": utc_now_iso(),
             "message": line.strip(),
             "source_timestamp": None,
         }
@@ -180,6 +288,8 @@ def main() -> None:
     ipmi_available = shutil.which("ipmitool") is not None
     if not ipmi_available:
         print("[WARN] ipmitool not found. Hardware SEL collection disabled.")
+    if not IFTOP_AVAILABLE:
+        print("[WARN] iftop not found. Falling back to psutil network estimation.")
 
     state = load_state()
     syslog_offset = state.get("syslog_offset", 0)
@@ -199,7 +309,9 @@ def main() -> None:
         now = time.monotonic()
 
         if now >= next_metrics:
-            metrics = collect_metrics()
+            metrics = collect_metrics(state)
+            state["last_metric_timestamp"] = metrics["timestamp"]
+            save_state(state)
             success = post_json(backend_metrics_url, metrics)
             if success:
                 print(f"[INFO] Metrics sent at {metrics['timestamp']}")
