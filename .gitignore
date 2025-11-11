@@ -1,0 +1,15 @@
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Virtual environment
+.venv/
+venv/
+
+# Local data artifacts
+backend/data/
+agent/agent_state.json
+
+# OS files
+.DS_Store
+Thumbs.db
