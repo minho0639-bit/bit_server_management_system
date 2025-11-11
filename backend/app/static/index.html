@@ -476,12 +476,19 @@
 
         gaugeConfig.forEach((config) => {
           const rawValue = latest[config.key];
-          const hasValue = rawValue !== null && rawValue !== undefined;
+          const hasValue =
+            rawValue !== null &&
+            rawValue !== undefined &&
+            !(config.key === "gpu_percent" && latest.has_gpu === false);
           const percent = hasValue ? clampPercent(Number(rawValue)) : 0;
           const color = hasValue ? config.color : "rgba(148, 163, 184, 0.35)";
           const gaugeClass = hasValue ? "gauge" : "gauge gauge--inactive";
           const emptyLabel =
-            config.key === "gpu_percent" ? "GPU 없음" : "데이터 없음";
+            config.key === "gpu_percent"
+              ? latest.has_gpu === false
+                ? "Non GPU"
+                : "GPU 없음"
+              : "데이터 없음";
           const card = document.createElement("div");
           card.className = "gauge-card";
           card.innerHTML = `
@@ -516,6 +523,7 @@
         });
 
         renderNetworkChart(metrics);
+        renderNetworkHistory(metrics);
       }
 
       function renderLogs(rows, target) {
@@ -675,6 +683,33 @@
           ctx.fillStyle = "#cbd5f5";
           ctx.fillText(item.label, x + 26, legendY - 1);
         });
+      }
+
+      const networkHistory = {
+        sent: [],
+        recv: [],
+        labels: [],
+        maxPoints: 120,
+      };
+
+      function renderNetworkHistory(metrics) {
+        if (!metrics.length) return;
+        const latest = metrics[0];
+        const stamp = latest.sampled_at || latest.recorded_at || Date.now().toString();
+        const label = formatTimestamp(stamp) ?? stamp;
+        const sent = Number(latest.net_sent) || 0;
+        const recv = Number(latest.net_recv) || 0;
+
+        const pushValue = (arr, value) => {
+          arr.unshift(value);
+          if (arr.length > networkHistory.maxPoints) {
+            arr.pop();
+          }
+        };
+
+        pushValue(networkHistory.labels, label);
+        pushValue(networkHistory.sent, sent);
+        pushValue(networkHistory.recv, recv);
       }
 
       async function refresh() {
