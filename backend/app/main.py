@@ -33,13 +33,23 @@ def get_db():
 def ingest_metric(metric: MetricIn, conn=Depends(get_db)) -> dict[str, Any]:
     cursor = conn.execute(
         """
-        INSERT INTO metrics (recorded_at, sampled_at, cpu_percent, memory_percent, disk_percent, net_sent, net_recv)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO metrics (
+            recorded_at,
+            sampled_at,
+            cpu_percent,
+            gpu_percent,
+            memory_percent,
+            disk_percent,
+            net_sent,
+            net_recv
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             datetime.now(timezone.utc).isoformat(),
             metric.timestamp.isoformat(),
             metric.cpu_percent,
+            metric.gpu_percent,
             metric.memory_percent,
             metric.disk_percent,
             metric.net_sent,
@@ -55,7 +65,16 @@ def recent_metrics(limit: int = Query(50, ge=1, le=500)) -> List[dict[str, Any]]
     rows = list(
         iterate_rows(
             """
-            SELECT id, recorded_at, sampled_at, cpu_percent, memory_percent, disk_percent, net_sent, net_recv
+            SELECT
+                id,
+                recorded_at,
+                sampled_at,
+                cpu_percent,
+                gpu_percent,
+                memory_percent,
+                disk_percent,
+                net_sent,
+                net_recv
             FROM metrics
             ORDER BY recorded_at DESC
             LIMIT ?

@@ -21,6 +21,8 @@ SYSLOG_WARNING_EMITTED = False
 IPMI_WARNING_EMITTED = False
 IFTOP_AVAILABLE = shutil.which("iftop") is not None
 IFTOP_WARNING_EMITTED = False
+NVSMI_PATH = shutil.which("nvidia-smi")
+GPU_WARNING_EMITTED = False
 
 RATE_PATTERN = re.compile(r"([\d.]+)\s*([kmg]?b)(?:/s)?", re.IGNORECASE)
 
@@ -66,7 +68,8 @@ def collect_network_via_iftop() -> Optional[Tuple[float, float]]:
     if not IFTOP_AVAILABLE:
         return None
 
-    command = ["iftop", "-t", "-s", "1", "-n", "-B"]
+    # Sample for 5 seconds to let iftop stabilise its moving average.
+    command = ["iftop", "-t", "-s", "5", "-n", "-B"]
     try:
         result = subprocess.run(
             command,
@@ -126,6 +129,60 @@ def collect_network_via_psutil(state: Dict[str, Any]) -> Tuple[float, float]:
     return sent_rate, recv_rate
 
 
+def collect_gpu_utilization() -> Optional[float]:
+    global GPU_WARNING_EMITTED
+    if NVSMI_PATH is None:
+        return None
+
+    command = [
+        NVSMI_PATH,
+        "--query-gpu=utilization.gpu",
+        "--format=csv,noheader,nounits",
+    ]
+    try:
+        result = subprocess.run(
+            command,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (FileNotFoundError, PermissionError):
+        if not GPU_WARNING_EMITTED:
+            print("[WARN] nvidia-smi not accessible; GPU metrics unavailable.")
+            GPU_WARNING_EMITTED = True
+        return None
+    except subprocess.SubprocessError as exc:
+        if not GPU_WARNING_EMITTED:
+            print(f"[WARN] nvidia-smi query failed: {exc}")
+            GPU_WARNING_EMITTED = True
+        return None
+
+    lines = [
+        line.strip()
+        for line in result.stdout.splitlines()
+        if line.strip() and "not supported" not in line.lower()
+    ]
+    values: List[float] = []
+    for line in lines:
+        try:
+            values.append(float(line))
+        except ValueError:
+            continue
+
+    if not values:
+        if not GPU_WARNING_EMITTED:
+            print("[INFO] No GPU utilization data reported by nvidia-smi.")
+            GPU_WARNING_EMITTED = True
+        return None
+
+    if GPU_WARNING_EMITTED:
+        print("[INFO] GPU monitoring restored.")
+        GPU_WARNING_EMITTED = False
+
+    return sum(values) / len(values)
+
+
 def refresh_net_snapshot(state: Dict[str, Any]) -> None:
     counters = psutil.net_io_counters()
     state["net_prev"] = {
@@ -148,10 +205,12 @@ def collect_metrics(state: Dict[str, Any]) -> Dict[str, Any]:
     memory = psutil.virtual_memory()
     disk = psutil.disk_usage("/")
     net_sent_rate, net_recv_rate = collect_network_rates(state)
+    gpu_percent = collect_gpu_utilization()
 
     metric = {
         "timestamp": utc_now_iso(),
         "cpu_percent": cpu_percent,
+        "gpu_percent": gpu_percent,
         "memory_percent": memory.percent,
         "disk_percent": disk.percent,
         "net_sent": net_sent_rate,
@@ -290,6 +349,9 @@ def main() -> None:
         print("[WARN] ipmitool not found. Hardware SEL collection disabled.")
     if not IFTOP_AVAILABLE:
         print("[WARN] iftop not found. Falling back to psutil network estimation.")
+
+    if NVSMI_PATH is None:
+        print("[WARN] nvidia-smi not found. GPU monitoring disabled.")
 
     state = load_state()
     syslog_offset = state.get("syslog_offset", 0)

@@ -13,6 +13,7 @@ def utc_now() -> datetime:
 class MetricIn(BaseModel):
     timestamp: datetime = Field(default_factory=utc_now)
     cpu_percent: float = Field(..., ge=0)
+    gpu_percent: Optional[float] = Field(default=None, ge=0)
     memory_percent: float = Field(..., ge=0)
     disk_percent: float = Field(..., ge=0)
     net_sent: float = Field(..., ge=0)

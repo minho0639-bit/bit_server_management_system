@@ -31,6 +31,7 @@ def init_db() -> None:
                 recorded_at TEXT NOT NULL,
                 sampled_at TEXT NOT NULL,
                 cpu_percent REAL NOT NULL,
+                gpu_percent REAL,
                 memory_percent REAL NOT NULL,
                 disk_percent REAL NOT NULL,
                 net_sent REAL NOT NULL,
@@ -53,12 +54,15 @@ def init_db() -> None:
             """
         )
 
-    # Backfill for deployments created without sampled_at
+    # Backfill for deployments created without sampled_at/gpu_percent
     with get_connection() as conn:
         cursor = conn.execute("PRAGMA table_info(metrics)")
         columns = {row["name"] for row in cursor.fetchall()}
         if "sampled_at" not in columns:
             conn.execute("ALTER TABLE metrics ADD COLUMN sampled_at TEXT DEFAULT ''")
+            conn.commit()
+        if "gpu_percent" not in columns:
+            conn.execute("ALTER TABLE metrics ADD COLUMN gpu_percent REAL")
             conn.commit()
 
 

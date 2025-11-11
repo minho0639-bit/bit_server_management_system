@@ -177,6 +177,11 @@
         box-shadow: inset 0 0 0 12px rgba(15, 23, 42, 0.6);
       }
 
+      .gauge--inactive {
+        background: rgba(51, 65, 85, 0.35);
+        box-shadow: inset 0 0 0 12px rgba(15, 23, 42, 0.55);
+      }
+
       .gauge::after {
         content: "";
         position: absolute;
@@ -184,6 +189,10 @@
         border-radius: 50%;
         background: rgba(15, 23, 42, 0.92);
         box-shadow: inset 0 10px 18px rgba(8, 12, 22, 0.65);
+      }
+
+      .gauge--inactive::after {
+        background: rgba(15, 23, 42, 0.88);
       }
 
       .gauge-center {
@@ -199,6 +208,12 @@
         font-size: 1.45rem;
         font-weight: 700;
         letter-spacing: -0.015em;
+      }
+
+      .gauge-value--muted {
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--text-secondary);
       }
 
       .gauge-caption {
@@ -233,6 +248,28 @@
       .metric-list span.value {
         font-size: 1.1rem;
         font-weight: 600;
+      }
+
+      .network-chart-wrapper {
+        margin-top: 1.4rem;
+        background: rgba(8, 12, 20, 0.28);
+        border: 1px solid rgba(148, 163, 184, 0.16);
+        border-radius: 1rem;
+        padding: 0.9rem 1rem 1.2rem;
+        height: 220px;
+        position: relative;
+      }
+
+      .network-chart-wrapper h4 {
+        margin: 0 0 0.75rem;
+        font-size: 0.9rem;
+        font-weight: 600;
+        color: var(--text-secondary);
+      }
+
+      .network-chart {
+        width: 100%;
+        height: calc(100% - 1.2rem);
       }
 
       table {
@@ -317,6 +354,10 @@
         </div>
         <div class="gauge-grid" id="gaugeGrid"></div>
         <div class="metric-list" id="networkStats"></div>
+        <div class="network-chart-wrapper">
+          <h4>네트워크 트래픽 추이</h4>
+          <canvas class="network-chart" id="networkChart" aria-label="네트워크 트래픽 그래프"></canvas>
+        </div>
       </section>
       <section class="panel">
         <div class="panel-head">
@@ -360,16 +401,18 @@
         const syslogCount = document.getElementById("syslogCount");
         const ipmiCount = document.getElementById("ipmiCount");
         const lastUpdated = document.getElementById("lastUpdated");
+      const networkCanvas = document.getElementById("networkChart");
 
         const gaugeConfig = [
           { key: "cpu_percent", label: "CPU 사용률", color: "#6366f1" },
-          { key: "memory_percent", label: "메모리 사용률", color: "#22d3ee" },
-          { key: "disk_percent", label: "디스크 사용률", color: "#f59e0b" },
+        { key: "gpu_percent", label: "GPU 사용률", color: "#38bdf8" },
+        { key: "memory_percent", label: "메모리 사용률", color: "#22d3ee" },
+        { key: "disk_percent", label: "디스크 사용률", color: "#f59e0b" },
         ];
 
         const networkConfig = [
-          { key: "net_sent", label: "송신 대역폭", suffix: " MB/s" },
-          { key: "net_recv", label: "수신 대역폭", suffix: " MB/s" },
+        { key: "net_sent", label: "송신 트래픽", suffix: " MB/s" },
+        { key: "net_recv", label: "수신 트래픽", suffix: " MB/s" },
         ];
 
         const TZ_PATTERN = /(?:Z|[+-]\d\d:\d\d)$/;
@@ -402,6 +445,14 @@
         return Math.min(100, Math.max(0, value));
       }
 
+      function clearCanvas(canvas) {
+        if (!canvas) return;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+
       function renderUsageMetrics(metrics) {
         gaugeGrid.innerHTML = "";
         networkStats.innerHTML = "";
@@ -410,6 +461,9 @@
           metricTimestamp.textContent = "샘플 없음";
           gaugeGrid.innerHTML =
             '<p class="empty-state">아직 수집된 메트릭이 없습니다.</p>';
+          networkStats.innerHTML =
+            '<p class="empty-state">네트워크 트래픽 정보가 없습니다.</p>';
+          clearCanvas(networkCanvas);
           return;
         }
 
@@ -421,15 +475,25 @@
           : "샘플 시각 정보 없음";
 
         gaugeConfig.forEach((config) => {
-          const rawValue = Number(latest[config.key]) || 0;
-          const percent = clampPercent(rawValue);
+          const rawValue = latest[config.key];
+          const hasValue = rawValue !== null && rawValue !== undefined;
+          const percent = hasValue ? clampPercent(Number(rawValue)) : 0;
+          const color = hasValue ? config.color : "rgba(148, 163, 184, 0.35)";
+          const gaugeClass = hasValue ? "gauge" : "gauge gauge--inactive";
+          const emptyLabel =
+            config.key === "gpu_percent" ? "GPU 없음" : "데이터 없음";
           const card = document.createElement("div");
           card.className = "gauge-card";
           card.innerHTML = `
-            <div class="gauge" style="--value:${percent}; --color:${config.color};">
+            <div class="${gaugeClass}" style="--value:${percent}; --color:${color};">
               <div class="gauge-center">
-                <span class="gauge-value">${percent.toFixed(1)}%</span>
-                <span class="gauge-caption">현재 사용률</span>
+                ${
+                  hasValue
+                    ? `<span class="gauge-value">${percent.toFixed(
+                        1
+                      )}%</span><span class="gauge-caption">현재 사용률</span>`
+                    : `<span class="gauge-value gauge-value--muted">${emptyLabel}</span>`
+                }
               </div>
             </div>
             <h3>${config.label}</h3>
@@ -450,6 +514,8 @@
           `;
           networkStats.appendChild(item);
         });
+
+        renderNetworkChart(metrics);
       }
 
       function renderLogs(rows, target) {
@@ -476,6 +542,138 @@
           });
 
           target.appendChild(tr);
+        });
+      }
+
+      function renderNetworkChart(metrics) {
+        if (!networkCanvas) return;
+        const container = networkCanvas.parentElement;
+        if (!container) return;
+
+        const chronological = [...metrics].reverse();
+        const recent = chronological.slice(-40);
+
+        if (!recent.length) {
+          clearCanvas(networkCanvas);
+          return;
+        }
+
+        const width = container.clientWidth;
+        const height = container.clientHeight - 12;
+        const dpr = window.devicePixelRatio || 1;
+        networkCanvas.width = width * dpr;
+        networkCanvas.height = height * dpr;
+        networkCanvas.style.width = `${width}px`;
+        networkCanvas.style.height = `${height}px`;
+
+        const ctx = networkCanvas.getContext("2d");
+        if (!ctx) return;
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, networkCanvas.width, networkCanvas.height);
+        ctx.scale(dpr, dpr);
+
+        const padding = { top: 16, right: 16, bottom: 30, left: 54 };
+        const chartWidth = width - padding.left - padding.right;
+        const chartHeight = height - padding.top - padding.bottom;
+        if (chartWidth <= 0 || chartHeight <= 0) return;
+
+        const labels = recent.map(
+          (row) =>
+            formatTimestamp(row.sampled_at || row.recorded_at) ??
+            (row.sampled_at || row.recorded_at || "")
+        );
+        const sentSeries = recent.map((row) => Number(row.net_sent) || 0);
+        const recvSeries = recent.map((row) => Number(row.net_recv) || 0);
+        const maxValue = Math.max(
+          1,
+          Math.ceil(Math.max(...sentSeries, ...recvSeries) * 1.25)
+        );
+
+        ctx.font = "11px 'Noto Sans KR', system-ui, sans-serif";
+        ctx.strokeStyle = "rgba(148, 163, 184, 0.16)";
+        ctx.fillStyle = "#94a3b8";
+        ctx.textAlign = "right";
+        ctx.textBaseline = "middle";
+        const gridLines = 4;
+        for (let i = 0; i <= gridLines; i++) {
+          const value = (maxValue / gridLines) * i;
+          const y = padding.top + chartHeight - (value / maxValue) * chartHeight;
+          ctx.beginPath();
+          ctx.moveTo(padding.left, y);
+          ctx.lineTo(padding.left + chartWidth, y);
+          ctx.stroke();
+          ctx.fillText(`${value.toFixed(1)} MB/s`, padding.left - 6, y);
+        }
+
+        ctx.strokeStyle = "rgba(148, 163, 184, 0.35)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(padding.left, padding.top);
+        ctx.lineTo(padding.left, padding.top + chartHeight);
+        ctx.lineTo(padding.left + chartWidth, padding.top + chartHeight);
+        ctx.stroke();
+
+        const stepX =
+          recent.length > 1 ? chartWidth / (recent.length - 1) : chartWidth;
+
+        const drawSeries = (series, color) => {
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 2;
+          ctx.lineJoin = "round";
+          ctx.lineCap = "round";
+          ctx.beginPath();
+          series.forEach((value, index) => {
+            const x = padding.left + stepX * index;
+            const y =
+              padding.top +
+              chartHeight -
+              (Math.min(value, maxValue) / maxValue) * chartHeight;
+            if (index === 0) {
+              ctx.moveTo(x, y);
+            } else {
+              ctx.lineTo(x, y);
+            }
+          });
+          ctx.stroke();
+        };
+
+        drawSeries(sentSeries, "#38bdf8");
+        drawSeries(recvSeries, "#f472b6");
+
+        ctx.fillStyle = "#94a3b8";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "top";
+        const labelIndices = new Set();
+        const count = recent.length;
+        if (count >= 1) {
+          labelIndices.add(0);
+          labelIndices.add(count - 1);
+          if (count >= 3) {
+            labelIndices.add(Math.floor((count - 1) / 2));
+          }
+          if (count >= 5) {
+            labelIndices.add(Math.floor((count - 1) / 4));
+            labelIndices.add(Math.floor(((count - 1) * 3) / 4));
+          }
+        }
+        labelIndices.forEach((index) => {
+          const x = padding.left + stepX * index;
+          ctx.fillText(labels[index], x, padding.top + chartHeight + 6);
+        });
+
+        const legendY = padding.top + 6;
+        ctx.textAlign = "left";
+        ctx.textBaseline = "middle";
+        const legendItems = [
+          { label: "송신", color: "#38bdf8" },
+          { label: "수신", color: "#f472b6" },
+        ];
+        legendItems.forEach((item, idx) => {
+          const x = padding.left + idx * 70;
+          ctx.fillStyle = item.color;
+          ctx.fillRect(x, legendY - 4, 20, 2);
+          ctx.fillStyle = "#cbd5f5";
+          ctx.fillText(item.label, x + 26, legendY - 1);
         });
       }
 
@@ -508,6 +706,7 @@
           ipmiCount.textContent = "0 건";
           metricTimestamp.textContent = "샘플 없음";
           lastUpdated.textContent = `데이터 갱신 오류: ${error.message}`;
+          clearCanvas(networkCanvas);
         }
       }
 
