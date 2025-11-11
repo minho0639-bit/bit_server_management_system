@@ -1,4 +1,4 @@
-# Single-Server Monitoring System
+# BITWatch 서버모니터링 시스템
 
 ## 개요
 - 단일 서버의 핵심 자원(CPU, 메모리, 디스크, 네트워크)을 추적하고, 시스템 로그(`/var/log/syslog`)와 하드웨어 이벤트(`ipmitool sel list`)를 수집하는 경량 모니터링 솔루션입니다.
@@ -39,7 +39,7 @@ python agent.py --backend-url http://127.0.0.1:8000
 - `ipmitool` 명령이 없는 환경에서는 SEL 로그 전송이 자동으로 생략됩니다.
 
 ### 3. 대시보드 확인
-- 백엔드 실행 후 브라우저에서 `http://<host>:8000/dashboard/` 에 접속하면 최신 메트릭과 수집된 로그를 확인할 수 있습니다.
+- 백엔드 실행 후 브라우저에서 `http://<host>:8000/dashboard/` 에 접속하면 **BITWatch 서버모니터링 시스템** UI에서 최신 메트릭과 수집된 로그를 확인할 수 있습니다.
 
 ## 주요 API
 - `POST /metrics` : CPU/메모리/디스크/네트워크 메트릭 수집
