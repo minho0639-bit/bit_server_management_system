@@ -1,0 +1,81 @@
+{
+  "requests": [
+    {
+      "id": "REQ-240313-02",
+      "project": "국가재난 AI 분석",
+      "owner": "김태윤 수석 연구원",
+      "organisation": "국가재난대응본부",
+      "requestedAt": "2025-03-13T02:30:00.000Z",
+      "deadline": "2025-03-20T00:00:00.000Z",
+      "status": "pending",
+      "summary": "재난 예측 모델링을 위한 긴급 GPU 클러스터 확장. 48시간 내 추론 파이프라인을 배포해야 함.",
+      "preferredRuntime": "Kubernetes + Slurm",
+      "preferredImage": "quantumflow/hpc-gpu:1.4",
+      "tags": ["GPU", "긴급", "국가사업"],
+      "requirements": {
+        "gpuCount": 12,
+        "cpuCores": 240,
+        "memoryGb": 512,
+        "storageTb": 24
+      },
+      "reviewerNotes": "보안 등급 2, 컨테이너 이미지 서명 확인 완료. 백업 노드: GPU 존 B."
+    },
+    {
+      "id": "REQ-240312-08",
+      "project": "바이오 데이터 레이크",
+      "owner": "이윤지 책임 연구원",
+      "organisation": "생명정보융합연구단",
+      "requestedAt": "2025-03-12T05:45:00.000Z",
+      "status": "pending",
+      "summary": "유전체 데이터 병렬 처리 워크로드. CPU 자원 최적화와 고속 스토리지 연동 필요.",
+      "preferredRuntime": "Kubernetes + Airflow",
+      "preferredImage": "quantumflow/data-pipeline:2.1",
+      "tags": ["CPU", "대용량"],
+      "requirements": {
+        "gpuCount": 0,
+        "cpuCores": 960,
+        "memoryGb": 2048,
+        "storageTb": 80
+      },
+      "reviewerNotes": "데이터 주권 규정 준수 필수. 네임스페이스는 `bio-datalake` 권장."
+    },
+    {
+      "id": "REQ-240311-01",
+      "project": "AI 단백질 접힘",
+      "owner": "박지훈 박사",
+      "organisation": "국가바이오데이터센터",
+      "requestedAt": "2025-03-11T01:10:00.000Z",
+      "status": "pending",
+      "summary": "AlphaFold 계열 시뮬레이션 배치. GPU 메모리 80GB 이상 필요, 노드 간 NVLink 요구.",
+      "preferredRuntime": "Kubernetes + Slurm",
+      "preferredImage": "quantumflow/hpc-gpu:1.4",
+      "tags": ["GPU", "바이오"],
+      "requirements": {
+        "gpuCount": 12,
+        "cpuCores": 320,
+        "memoryGb": 768,
+        "storageTb": 10
+      },
+      "reviewerNotes": "NVLink 노드 우선 할당. 컨테이너 환경 변수 파일 업로드 완료."
+    },
+    {
+      "id": "REQ-240310-04",
+      "project": "스마트시티 시뮬레이션",
+      "owner": "장서연 연구위원",
+      "organisation": "도시연구소",
+      "requestedAt": "2025-03-10T04:40:00.000Z",
+      "status": "pending",
+      "summary": "대규모 CPU 기반 에이전트 시뮬레이션. 고밀도 CPU 노드 3000 vCore 이상 필요.",
+      "preferredRuntime": "Kubernetes + Custom Scheduler",
+      "preferredImage": "quantumflow/urban-sim:1.2",
+      "tags": ["CPU", "시뮬레이션"],
+      "requirements": {
+        "gpuCount": 0,
+        "cpuCores": 1200,
+        "memoryGb": 3072,
+        "storageTb": 12
+      }
+    }
+  ],
+  "allocations": []
+}

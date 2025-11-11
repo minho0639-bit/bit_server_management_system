@@ -95,22 +95,64 @@ export default function AdminResourcesPage() {
         userName="이현수 관리자"
         userRole="운영 총괄"
         avatarLabel="AD"
-        actions={
-          <>
-            <button className="inline-flex items-center gap-2 rounded-full bg-sky-500 px-4 py-2 text-xs font-semibold text-slate-950 shadow-[0_10px_25px_rgba(56,189,248,0.35)] transition hover:bg-sky-400">
-              노드 증설 계획
-              <ServerCog className="h-3.5 w-3.5" />
-            </button>
-            <button className="inline-flex items-center gap-2 rounded-full border border-white/15 px-4 py-2 text-xs font-semibold text-slate-100 transition hover:border-sky-200 hover:text-sky-100">
-              네트워크 토폴로지
-              <Network className="h-3.5 w-3.5" />
-            </button>
-          </>
-        }
+          actions={
+            <>
+              <Link
+                href="/admin/resources/allocations"
+                className="inline-flex items-center gap-2 rounded-full bg-emerald-400 px-4 py-2 text-xs font-semibold text-slate-950 shadow-[0_10px_25px_rgba(52,211,153,0.35)] transition hover:bg-emerald-300"
+              >
+                컨테이너 할당
+                <ArrowUpRight className="h-3.5 w-3.5" />
+              </Link>
+              <button className="inline-flex items-center gap-2 rounded-full bg-sky-500 px-4 py-2 text-xs font-semibold text-slate-950 shadow-[0_10px_25px_rgba(56,189,248,0.35)] transition hover:bg-sky-400">
+                노드 증설 계획
+                <ServerCog className="h-3.5 w-3.5" />
+              </button>
+              <button className="inline-flex items-center gap-2 rounded-full border border-white/15 px-4 py-2 text-xs font-semibold text-slate-100 transition hover:border-sky-200 hover:text-sky-100">
+                네트워크 토폴로지
+                <Network className="h-3.5 w-3.5" />
+              </button>
+            </>
+          }
         />
 
-        <div className="flex-1 space-y-10 px-6 py-8">
-          <NodeRegistryPanel />
+          <div className="flex-1 space-y-10 px-6 py-8">
+            <NodeRegistryPanel />
+
+            <section className="flex flex-col gap-6 rounded-3xl border border-emerald-300/40 bg-gradient-to-br from-emerald-500/10 via-slate-950/60 to-slate-950/90 p-6 md:flex-row md:items-center md:justify-between">
+              <div className="space-y-3">
+                <p className="text-xs uppercase tracking-[0.35em] text-emerald-200">
+                  신규 워크플로
+                </p>
+                <h3 className="text-xl font-semibold text-white">
+                  사용자 신청을 컨테이너로 즉시 배포하세요
+                </h3>
+                <p className="text-sm text-slate-200">
+                  승인된 신청을 선택하고 권한 있는 노드에 컨테이너 이미지를 할당합니다. 배포 상태와 리소스 사용량을 한 화면에서 추적할 수 있습니다.
+                </p>
+                <div className="flex flex-wrap gap-3 text-[11px] uppercase tracking-widest text-slate-300">
+                  <span className="inline-flex items-center gap-2 rounded-full border border-emerald-400/40 px-3 py-1">
+                    <Layers className="h-3.5 w-3.5 text-emerald-200" />
+                    자동 네임스페이스 구성
+                  </span>
+                  <span className="inline-flex items-center gap-2 rounded-full border border-emerald-400/40 px-3 py-1">
+                    <Cpu className="h-3.5 w-3.5 text-emerald-200" />
+                    GPU/CPU 할당 검증
+                  </span>
+                  <span className="inline-flex items-center gap-2 rounded-full border border-emerald-400/40 px-3 py-1">
+                    <ServerCog className="h-3.5 w-3.5 text-emerald-200" />
+                    상태 전환 추적
+                  </span>
+                </div>
+              </div>
+              <Link
+                href="/admin/resources/allocations"
+                className="inline-flex items-center gap-2 self-start rounded-full bg-emerald-400 px-5 py-3 text-xs font-semibold text-slate-950 shadow-[0_15px_35px_rgba(52,211,153,0.35)] transition hover:bg-emerald-300 md:self-center"
+              >
+                컨테이너 할당 메뉴 열기
+                <ArrowUpRight className="h-3.5 w-3.5" />
+              </Link>
+            </section>
 
           <section className="grid gap-6 rounded-3xl border border-white/10 bg-white/5 p-6 md:grid-cols-2 xl:grid-cols-4">
             {nodeSummary.map((node) => (
