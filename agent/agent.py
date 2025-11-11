@@ -129,10 +129,10 @@ def collect_network_via_psutil(state: Dict[str, Any]) -> Tuple[float, float]:
     return sent_rate, recv_rate
 
 
-def collect_gpu_utilization() -> Optional[float]:
+def collect_gpu_utilization() -> Tuple[bool, Optional[float]]:
     global GPU_WARNING_EMITTED
     if NVSMI_PATH is None:
-        return None
+        return False, None
 
     command = [
         NVSMI_PATH,
@@ -151,12 +151,12 @@ def collect_gpu_utilization() -> Optional[float]:
         if not GPU_WARNING_EMITTED:
             print("[WARN] nvidia-smi not accessible; GPU metrics unavailable.")
             GPU_WARNING_EMITTED = True
-        return None
+        return False, None
     except subprocess.SubprocessError as exc:
         if not GPU_WARNING_EMITTED:
             print(f"[WARN] nvidia-smi query failed: {exc}")
             GPU_WARNING_EMITTED = True
-        return None
+        return False, None
 
     lines = [
         line.strip()
@@ -172,15 +172,15 @@ def collect_gpu_utilization() -> Optional[float]:
 
     if not values:
         if not GPU_WARNING_EMITTED:
-            print("[INFO] No GPU utilization data reported by nvidia-smi.")
+            print("[INFO] nvidia-smi detected no GPUs.")
             GPU_WARNING_EMITTED = True
-        return None
+        return False, None
 
     if GPU_WARNING_EMITTED:
         print("[INFO] GPU monitoring restored.")
         GPU_WARNING_EMITTED = False
 
-    return sum(values) / len(values)
+    return True, sum(values) / len(values)
 
 
 def refresh_net_snapshot(state: Dict[str, Any]) -> None:
@@ -205,12 +205,13 @@ def collect_metrics(state: Dict[str, Any]) -> Dict[str, Any]:
     memory = psutil.virtual_memory()
     disk = psutil.disk_usage("/")
     net_sent_rate, net_recv_rate = collect_network_rates(state)
-    gpu_percent = collect_gpu_utilization()
+    gpu_present, gpu_percent = collect_gpu_utilization()
 
     metric = {
         "timestamp": utc_now_iso(),
         "cpu_percent": cpu_percent,
-        "gpu_percent": gpu_percent,
+        "gpu_present": gpu_present,
+        "gpu_percent": gpu_percent if gpu_present else None,
         "memory_percent": memory.percent,
         "disk_percent": disk.percent,
         "net_sent": net_sent_rate,

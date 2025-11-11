@@ -37,18 +37,20 @@ def ingest_metric(metric: MetricIn, conn=Depends(get_db)) -> dict[str, Any]:
             recorded_at,
             sampled_at,
             cpu_percent,
+            gpu_present,
             gpu_percent,
             memory_percent,
             disk_percent,
             net_sent,
             net_recv
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             datetime.now(timezone.utc).isoformat(),
             metric.timestamp.isoformat(),
             metric.cpu_percent,
+            1 if metric.gpu_present else 0,
             metric.gpu_percent,
             metric.memory_percent,
             metric.disk_percent,
@@ -70,6 +72,7 @@ def recent_metrics(limit: int = Query(50, ge=1, le=500)) -> List[dict[str, Any]]
                 recorded_at,
                 sampled_at,
                 cpu_percent,
+                gpu_present,
                 gpu_percent,
                 memory_percent,
                 disk_percent,
@@ -82,7 +85,15 @@ def recent_metrics(limit: int = Query(50, ge=1, le=500)) -> List[dict[str, Any]]
             (limit,),
         )
     )
-    return [dict(row) for row in rows]
+    results: List[dict[str, Any]] = []
+    for row in rows:
+        data = dict(row)
+        if "gpu_present" in data and data["gpu_present"] is not None:
+            data["gpu_present"] = bool(data["gpu_present"])
+        if not data.get("gpu_present"):
+            data["gpu_percent"] = None
+        results.append(data)
+    return results
 
 
 @app.post("/logs/syslog", status_code=201)

@@ -258,6 +258,8 @@
         padding: 0.9rem 1rem 1.2rem;
         height: 220px;
         position: relative;
+        overflow: hidden;
+        width: 100%;
       }
 
       .network-chart-wrapper h4 {
@@ -410,12 +412,12 @@
         { key: "disk_percent", label: "디스크 사용률", color: "#f59e0b" },
         ];
 
-        const networkConfig = [
-        { key: "net_sent", label: "송신 트래픽", suffix: " MB/s" },
-        { key: "net_recv", label: "수신 트래픽", suffix: " MB/s" },
-        ];
+      const networkConfig = [
+        { key: "net_sent", label: "송신 트래픽" },
+        { key: "net_recv", label: "수신 트래픽" },
+      ];
 
-        const TZ_PATTERN = /(?:Z|[+-]\d\d:\d\d)$/;
+      const TZ_PATTERN = /(?:Z|[+-]\d\d:\d\d)$/;
 
       async function fetchJSON(url) {
         const response = await fetch(url, { cache: "no-store" });
@@ -443,6 +445,25 @@
       function clampPercent(value) {
         if (!Number.isFinite(value)) return 0;
         return Math.min(100, Math.max(0, value));
+      }
+
+      function parseGpuPresent(flag) {
+        if (flag === null || flag === undefined) return null;
+        if (typeof flag === "boolean") return flag;
+        if (typeof flag === "number") return flag !== 0;
+        if (typeof flag === "string") return flag === "1" || flag.toLowerCase() === "true";
+        return null;
+      }
+
+      function formatTraffic(value) {
+        if (!Number.isFinite(value)) return "-";
+        if (value >= 1) {
+          return `${value.toFixed(2)} MB/s`;
+        }
+        if (value >= 0.001) {
+          return `${(value * 1024).toFixed(1)} KB/s`;
+        }
+        return `${(value * 1024 * 1024).toFixed(0)} B/s`;
       }
 
       function clearCanvas(canvas) {
@@ -474,18 +495,21 @@
           ? `샘플 시각: ${localized}`
           : "샘플 시각 정보 없음";
 
+        const gpuPresent = parseGpuPresent(latest.gpu_present);
+        const gpuPresentKnown = gpuPresent !== null;
+
         gaugeConfig.forEach((config) => {
           const rawValue = latest[config.key];
           const hasValue =
             rawValue !== null &&
             rawValue !== undefined &&
-            !(config.key === "gpu_percent" && latest.has_gpu === false);
+            !(config.key === "gpu_percent" && gpuPresentKnown && !gpuPresent);
           const percent = hasValue ? clampPercent(Number(rawValue)) : 0;
           const color = hasValue ? config.color : "rgba(148, 163, 184, 0.35)";
           const gaugeClass = hasValue ? "gauge" : "gauge gauge--inactive";
           const emptyLabel =
             config.key === "gpu_percent"
-              ? latest.has_gpu === false
+              ? gpuPresentKnown && !gpuPresent
                 ? "Non GPU"
                 : "GPU 없음"
               : "데이터 없음";
@@ -510,20 +534,17 @@
 
         networkConfig.forEach((config) => {
           const rawValue = Number(latest[config.key]);
-          const formatted = Number.isFinite(rawValue)
-            ? rawValue.toFixed(2)
-            : "-";
+          const formatted = formatTraffic(rawValue);
           const item = document.createElement("div");
           item.className = "metric-item";
           item.innerHTML = `
             <span class="label">${config.label}</span>
-            <span class="value">${formatted}${config.suffix}</span>
+            <span class="value">${formatted}</span>
           `;
           networkStats.appendChild(item);
         });
 
         renderNetworkChart(metrics);
-        renderNetworkHistory(metrics);
       }
 
       function renderLogs(rows, target) {
@@ -559,7 +580,7 @@
         if (!container) return;
 
         const chronological = [...metrics].reverse();
-        const recent = chronological.slice(-40);
+        const recent = chronological.slice(-30);
 
         if (!recent.length) {
           clearCanvas(networkCanvas);
@@ -683,33 +704,6 @@
           ctx.fillStyle = "#cbd5f5";
           ctx.fillText(item.label, x + 26, legendY - 1);
         });
-      }
-
-      const networkHistory = {
-        sent: [],
-        recv: [],
-        labels: [],
-        maxPoints: 120,
-      };
-
-      function renderNetworkHistory(metrics) {
-        if (!metrics.length) return;
-        const latest = metrics[0];
-        const stamp = latest.sampled_at || latest.recorded_at || Date.now().toString();
-        const label = formatTimestamp(stamp) ?? stamp;
-        const sent = Number(latest.net_sent) || 0;
-        const recv = Number(latest.net_recv) || 0;
-
-        const pushValue = (arr, value) => {
-          arr.unshift(value);
-          if (arr.length > networkHistory.maxPoints) {
-            arr.pop();
-          }
-        };
-
-        pushValue(networkHistory.labels, label);
-        pushValue(networkHistory.sent, sent);
-        pushValue(networkHistory.recv, recv);
       }
 
       async function refresh() {

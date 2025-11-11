@@ -31,6 +31,7 @@ def init_db() -> None:
                 recorded_at TEXT NOT NULL,
                 sampled_at TEXT NOT NULL,
                 cpu_percent REAL NOT NULL,
+                gpu_present INTEGER DEFAULT 0,
                 gpu_percent REAL,
                 memory_percent REAL NOT NULL,
                 disk_percent REAL NOT NULL,
@@ -60,6 +61,9 @@ def init_db() -> None:
         columns = {row["name"] for row in cursor.fetchall()}
         if "sampled_at" not in columns:
             conn.execute("ALTER TABLE metrics ADD COLUMN sampled_at TEXT DEFAULT ''")
+            conn.commit()
+        if "gpu_present" not in columns:
+            conn.execute("ALTER TABLE metrics ADD COLUMN gpu_present INTEGER DEFAULT 0")
             conn.commit()
         if "gpu_percent" not in columns:
             conn.execute("ALTER TABLE metrics ADD COLUMN gpu_percent REAL")
