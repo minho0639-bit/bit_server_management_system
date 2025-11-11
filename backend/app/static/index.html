@@ -2,7 +2,7 @@
 <html lang="ko">
   <head>
     <meta charset="UTF-8" />
-    <title>BITWatch 서버모니터링 시스템</title>
+    <title>BITWatch AI 서버 관리 시스템</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link
       rel="stylesheet"
@@ -18,15 +18,19 @@
     <style>
       :root {
         color-scheme: dark;
-        --bg-primary: radial-gradient(circle at top left, #2f2bff, #0f172a 55%);
-        --panel-bg: rgba(15, 23, 42, 0.85);
-        --panel-border: rgba(148, 163, 184, 0.18);
-        --panel-shadow: 0 25px 45px rgba(15, 23, 42, 0.45);
-        --accent: #38bdf8;
-        --accent-soft: rgba(56, 189, 248, 0.16);
-        --badge-bg: rgba(129, 140, 248, 0.18);
+        --bg-gradient: radial-gradient(
+          circle at 14% 18%,
+          rgba(59, 130, 246, 0.55),
+          rgba(15, 23, 42, 0.92) 55%
+        );
+        --panel-bg: rgba(15, 23, 42, 0.78);
+        --panel-border: rgba(148, 163, 184, 0.16);
+        --panel-shadow: 0 24px 40px rgba(8, 11, 19, 0.55);
         --text-primary: #e2e8f0;
         --text-secondary: #94a3b8;
+        --badge-bg: rgba(148, 163, 184, 0.22);
+        --highlight: rgba(56, 189, 248, 0.15);
+        --track-color: rgba(15, 23, 42, 0.52);
       }
 
       * {
@@ -37,42 +41,36 @@
         font-family: "Noto Sans KR", system-ui, sans-serif;
         margin: 0;
         min-height: 100vh;
-        background: var(--bg-primary);
+        background: linear-gradient(135deg, rgba(14, 23, 42, 0.96), rgba(21, 27, 45, 0.9)),
+          var(--bg-gradient);
         color: var(--text-primary);
-        position: relative;
-      }
-
-      body::before {
-        content: "";
-        position: fixed;
-        inset: 0;
-        background: linear-gradient(145deg, rgba(59, 130, 246, 0.1), rgba(129, 140, 248, 0.05));
-        pointer-events: none;
-        z-index: -1;
+        display: flex;
+        flex-direction: column;
       }
 
       header {
-        padding: 2rem clamp(1.2rem, 4vw, 3rem);
+        padding: clamp(1.8rem, 4vw, 2.6rem) clamp(1.4rem, 4vw, 3rem) 1.2rem;
         display: flex;
-        justify-content: space-between;
+        flex-wrap: wrap;
         align-items: flex-start;
-        gap: 1.5rem;
+        justify-content: space-between;
+        gap: 1rem 1.4rem;
       }
 
-      header .brand {
+      .brand {
         display: flex;
         flex-direction: column;
-        gap: 0.4rem;
+        gap: 0.45rem;
       }
 
-      header h1 {
+      .brand h1 {
         margin: 0;
-        font-size: clamp(1.6rem, 4vw, 2.4rem);
+        font-size: clamp(1.7rem, 4vw, 2.6rem);
         font-weight: 700;
-        letter-spacing: -0.03em;
+        letter-spacing: -0.035em;
       }
 
-      header p {
+      .brand p {
         margin: 0;
         color: var(--text-secondary);
         font-weight: 500;
@@ -81,191 +79,223 @@
       .status-pill {
         display: inline-flex;
         align-items: center;
-        gap: 0.5rem;
-        background: var(--panel-bg);
-        border: 1px solid var(--panel-border);
-        padding: 0.5rem 1rem;
+        gap: 0.45rem;
+        padding: 0.55rem 1.05rem;
         border-radius: 999px;
+        border: 1px solid var(--panel-border);
+        background: rgba(15, 23, 42, 0.65);
         backdrop-filter: blur(14px);
-        box-shadow: var(--panel-shadow);
-        font-size: 0.85rem;
         color: var(--text-secondary);
+        font-size: 0.85rem;
+        box-shadow: var(--panel-shadow);
       }
 
       main {
-        padding: 0 clamp(1.2rem, 4vw, 3rem) 3rem;
+        flex: 1;
         display: grid;
-        gap: 1.5rem;
+        gap: 1.6rem;
+        padding: 0 clamp(1.4rem, 4vw, 3rem) clamp(2.6rem, 6vw, 3.4rem);
       }
 
-      section {
+      .panel {
         background: var(--panel-bg);
         border: 1px solid var(--panel-border);
-        border-radius: 1.5rem;
-        padding: clamp(1.2rem, 4vw, 1.8rem);
-        backdrop-filter: blur(14px);
+        border-radius: 1.2rem;
+        padding: clamp(1.2rem, 3vw, 1.9rem);
+        backdrop-filter: blur(16px);
         box-shadow: var(--panel-shadow);
       }
 
-      section h2 {
-        margin-top: 0;
-        font-size: 1.1rem;
-        font-weight: 600;
-        letter-spacing: -0.01em;
+      .panel-head {
         display: flex;
         align-items: center;
-        gap: 0.7rem;
+        justify-content: space-between;
+        gap: 0.75rem;
+        flex-wrap: wrap;
       }
 
-      .metric-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-        gap: 1rem;
-        margin-top: 1rem;
+      .panel-head h2 {
+        margin: 0;
+        font-size: 1.15rem;
+        font-weight: 600;
+        letter-spacing: -0.01em;
       }
 
-      .metric-card {
-        background: rgba(15, 23, 42, 0.55);
+      .tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.25rem 0.7rem;
+        border-radius: 999px;
+        background: var(--badge-bg);
         border: 1px solid rgba(148, 163, 184, 0.2);
+        color: var(--text-secondary);
+        font-size: 0.75rem;
+        font-weight: 600;
+      }
+
+      .gauge-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 1.4rem;
+        margin-top: 1.3rem;
+      }
+
+      .gauge-card {
+        background: rgba(15, 23, 42, 0.6);
+        border: 1px solid rgba(148, 163, 184, 0.18);
         border-radius: 1rem;
-        padding: 1.1rem;
+        padding: 1.2rem;
         display: flex;
         flex-direction: column;
-        gap: 0.4rem;
+        align-items: center;
+        gap: 0.9rem;
         position: relative;
-        overflow: hidden;
-        isolation: isolate;
       }
 
-      .metric-card::after {
-        content: "";
-        position: absolute;
-        inset: -30% 60%;
-        background: radial-gradient(circle, rgba(56, 189, 248, 0.35), transparent 60%);
-        opacity: 0;
-        transition: opacity 0.4s ease;
-        z-index: -1;
-      }
-
-      .metric-card:hover::after {
-        opacity: 1;
-      }
-
-      .metric-card h3 {
+      .gauge-card h3 {
         margin: 0;
         font-size: 0.95rem;
         color: var(--text-secondary);
         font-weight: 500;
+        letter-spacing: -0.005em;
       }
 
-      .metric-card p {
-        margin: 0;
-        font-size: 1.6rem;
-        font-weight: 700;
-        letter-spacing: -0.02em;
-      }
-
-      .badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.3rem;
-        background: var(--badge-bg);
-        border: 1px solid rgba(129, 140, 248, 0.35);
-        padding: 0.2rem 0.65rem;
-        border-radius: 999px;
-        font-size: 0.75rem;
-        font-weight: 600;
-        color: var(--text-secondary);
-      }
-
-      .chart-wrapper {
+      .gauge {
+        --value: 0;
+        --color: #6366f1;
         position: relative;
-        height: 340px;
-        margin-top: 1rem;
+        width: min(180px, 42vw);
+        aspect-ratio: 1 / 1;
+        border-radius: 50%;
+        background: conic-gradient(
+          var(--color) calc(var(--value) * 1%),
+          rgba(148, 163, 184, 0.18) 0
+        );
+        display: grid;
+        place-items: center;
+        box-shadow: inset 0 0 0 12px rgba(15, 23, 42, 0.6);
       }
 
-      .chart-legend {
+      .gauge::after {
+        content: "";
         position: absolute;
-        top: 12px;
-        right: 16px;
+        inset: 18%;
+        border-radius: 50%;
+        background: rgba(15, 23, 42, 0.92);
+        box-shadow: inset 0 10px 18px rgba(8, 12, 22, 0.65);
+      }
+
+      .gauge-center {
+        position: relative;
         display: flex;
-        gap: 0.75rem;
-        flex-wrap: wrap;
-        justify-content: flex-end;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.25rem;
+        z-index: 1;
+      }
+
+      .gauge-value {
+        font-size: 1.45rem;
+        font-weight: 700;
+        letter-spacing: -0.015em;
+      }
+
+      .gauge-caption {
         font-size: 0.75rem;
         color: var(--text-secondary);
       }
 
-      .legend-item {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.35rem;
-        background: rgba(15, 23, 42, 0.55);
-        border: 1px solid rgba(148, 163, 184, 0.2);
-        border-radius: 999px;
-        padding: 0.25rem 0.6rem;
+      .metric-list {
+        margin-top: 1.3rem;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 1rem;
       }
 
-      .legend-color {
-        width: 10px;
-        height: 10px;
-        border-radius: 999px;
+      .metric-list .metric-item {
+        background: rgba(11, 18, 32, 0.6);
+        border: 1px solid rgba(148, 163, 184, 0.16);
+        border-radius: 0.9rem;
+        padding: 0.95rem 1.05rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+      }
+
+      .metric-list span.label {
+        font-size: 0.78rem;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+
+      .metric-list span.value {
+        font-size: 1.1rem;
+        font-weight: 600;
       }
 
       table {
         width: 100%;
         border-collapse: collapse;
-        margin-top: 1rem;
+        margin-top: 1.1rem;
+        background: rgba(8, 12, 20, 0.35);
+        border-radius: 0.9rem;
+        overflow: hidden;
       }
 
       th,
       td {
-        padding: 0.65rem 0.6rem;
+        padding: 0.7rem 0.8rem;
         text-align: left;
         border-bottom: 1px solid rgba(148, 163, 184, 0.12);
         font-size: 0.85rem;
-        vertical-align: top;
       }
 
       th {
+        font-size: 0.76rem;
         color: var(--text-secondary);
-        font-weight: 600;
         text-transform: uppercase;
-        font-size: 0.75rem;
-        letter-spacing: 0.06em;
+        letter-spacing: 0.08em;
+        background: rgba(15, 23, 42, 0.55);
       }
 
       tbody tr:hover {
-        background: rgba(56, 189, 248, 0.06);
+        background: rgba(56, 189, 248, 0.08);
+      }
+
+      tbody tr:last-child td {
+        border-bottom: none;
       }
 
       .empty-state {
+        text-align: center;
+        padding: 1rem 0;
         color: var(--text-secondary);
-        font-size: 0.9rem;
-        padding: 0.6rem;
+        font-size: 0.88rem;
       }
 
-      @media (max-width: 960px) {
+      @media (max-width: 768px) {
         header {
           flex-direction: column;
           align-items: flex-start;
         }
 
-        .chart-wrapper {
-          height: 280px;
+        .gauge {
+          width: min(200px, 60vw);
         }
       }
 
-      @media (max-width: 600px) {
+      @media (max-width: 540px) {
         header {
-          padding: 1.5rem;
+          padding: 1.6rem;
         }
 
         main {
-          padding: 0 1.5rem 2.5rem;
+          padding: 0 1.6rem 2.4rem;
         }
 
-        section {
+        .panel {
           border-radius: 1rem;
         }
       }
@@ -274,25 +304,25 @@
   <body>
     <header>
       <div class="brand">
-        <h1>BITWatch 서버모니터링 시스템</h1>
-        <p>단일 서버 자원 및 이벤트를 실시간으로 모니터링합니다.</p>
+        <h1>BITWatch AI 서버 관리 시스템</h1>
+        <p>단일 서버의 자원과 이벤트를 안정적으로 수집하고 시각화합니다.</p>
       </div>
-      <span class="status-pill" id="lastUpdated">데이터 준비중...</span>
+      <span class="status-pill" id="lastUpdated">마지막 업데이트 준비중...</span>
     </header>
     <main>
-      <section>
-        <h2>실시간 자원 요약</h2>
-        <div class="metric-grid" id="metricsGrid"></div>
-        <div class="chart-wrapper">
-          <canvas id="resourceChart" aria-label="자원 사용률 그래프"></canvas>
-          <div class="chart-legend" id="chartLegend"></div>
+      <section class="panel">
+        <div class="panel-head">
+          <h2>자원 사용 현황</h2>
+          <span class="tag" id="metricTimestamp">샘플 없음</span>
         </div>
+        <div class="gauge-grid" id="gaugeGrid"></div>
+        <div class="metric-list" id="networkStats"></div>
       </section>
-      <section>
-        <h2>
-          시스템 로그
-          <span class="badge" id="syslogCount">0 건</span>
-        </h2>
+      <section class="panel">
+        <div class="panel-head">
+          <h2>시스템 로그</h2>
+          <span class="tag" id="syslogCount">0 건</span>
+        </div>
         <table>
           <thead>
             <tr>
@@ -304,11 +334,11 @@
           <tbody id="syslogTable"></tbody>
         </table>
       </section>
-      <section>
-        <h2>
-          IPMI SEL 이벤트
-          <span class="badge" id="ipmiCount">0 건</span>
-        </h2>
+      <section class="panel">
+        <div class="panel-head">
+          <h2>IPMI SEL 이벤트</h2>
+          <span class="tag" id="ipmiCount">0 건</span>
+        </div>
         <table>
           <thead>
             <tr>
@@ -322,27 +352,24 @@
       </section>
     </main>
     <script>
-      const metricsGrid = document.getElementById("metricsGrid");
+      const gaugeGrid = document.getElementById("gaugeGrid");
+      const networkStats = document.getElementById("networkStats");
+      const metricTimestamp = document.getElementById("metricTimestamp");
       const syslogTable = document.getElementById("syslogTable");
       const ipmiTable = document.getElementById("ipmiTable");
       const syslogCount = document.getElementById("syslogCount");
       const ipmiCount = document.getElementById("ipmiCount");
       const lastUpdated = document.getElementById("lastUpdated");
-      const resourceCanvas = document.getElementById("resourceChart");
-      const chartLegend = document.getElementById("chartLegend");
 
-      const metricLabels = {
-        cpu_percent: "CPU 사용률 (%)",
-        memory_percent: "메모리 사용률 (%)",
-        disk_percent: "디스크 사용률 (%)",
-        net_sent: "송신 대역폭 (MB)",
-        net_recv: "수신 대역폭 (MB)",
-      };
+      const gaugeConfig = [
+        { key: "cpu_percent", label: "CPU 사용률", color: "#6366f1" },
+        { key: "memory_percent", label: "메모리 사용률", color: "#22d3ee" },
+        { key: "disk_percent", label: "디스크 사용률", color: "#f59e0b" },
+      ];
 
-      const chartSeriesConfig = [
-        { key: "cpu_percent", label: "CPU 사용률", color: "#38bdf8" },
-        { key: "memory_percent", label: "메모리 사용률", color: "#c084fc" },
-        { key: "disk_percent", label: "디스크 사용률", color: "#f472b6" },
+      const networkConfig = [
+        { key: "net_sent", label: "송신 대역폭", suffix: " MB" },
+        { key: "net_recv", label: "수신 대역폭", suffix: " MB" },
       ];
 
       async function fetchJSON(url) {
@@ -353,181 +380,58 @@
         return response.json();
       }
 
-      function renderMetricCards(metrics) {
-        metricsGrid.innerHTML = "";
+      function clampPercent(value) {
+        if (!Number.isFinite(value)) return 0;
+        return Math.min(100, Math.max(0, value));
+      }
+
+      function renderUsageMetrics(metrics) {
+        gaugeGrid.innerHTML = "";
+        networkStats.innerHTML = "";
+
         if (!metrics.length) {
-          metricsGrid.innerHTML = '<p class="empty-state">수집된 메트릭이 없습니다.</p>';
+          metricTimestamp.textContent = "샘플 없음";
+          gaugeGrid.innerHTML =
+            '<p class="empty-state">아직 수집된 메트릭이 없습니다.</p>';
           return;
         }
+
         const latest = metrics[0];
-        Object.entries(metricLabels).forEach(([key, label]) => {
-          const value = Number(latest[key]);
-          const formatted = Number.isFinite(value) ? value.toFixed(2) : "-";
+        const stamp = latest.sampled_at || latest.recorded_at || "";
+        metricTimestamp.textContent = stamp
+          ? `샘플 시각: ${stamp.replace("T", " ").slice(0, 19)}`
+          : "샘플 시각 정보 없음";
+
+        gaugeConfig.forEach((config) => {
+          const rawValue = Number(latest[config.key]) || 0;
+          const percent = clampPercent(rawValue);
           const card = document.createElement("div");
-          card.className = "metric-card";
+          card.className = "gauge-card";
           card.innerHTML = `
-            <h3>${label}</h3>
-            <p>${formatted}</p>
+            <div class="gauge" style="--value:${percent}; --color:${config.color};">
+              <div class="gauge-center">
+                <span class="gauge-value">${percent.toFixed(1)}%</span>
+                <span class="gauge-caption">현재 사용률</span>
+              </div>
+            </div>
+            <h3>${config.label}</h3>
           `;
-          metricsGrid.appendChild(card);
-        });
-      }
-
-      function clearCanvas(canvas) {
-        const ctx = canvas.getContext("2d");
-        if (ctx) {
-          ctx.setTransform(1, 0, 0, 1, 0, 0);
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
-        }
-      }
-
-      function drawLineChart(canvas, labels, series) {
-        const container = canvas.parentElement;
-        if (!container) return;
-
-        const width = container.clientWidth;
-        const height = container.clientHeight;
-        if (!width || !height) return;
-
-        const dpr = window.devicePixelRatio || 1;
-        canvas.width = width * dpr;
-        canvas.height = height * dpr;
-        canvas.style.width = `${width}px`;
-        canvas.style.height = `${height}px`;
-
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return;
-
-        ctx.setTransform(1, 0, 0, 1, 0, 0);
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.scale(dpr, dpr);
-
-        const padding = { top: 26, right: 70, bottom: 36, left: 60 };
-        const chartWidth = width - padding.left - padding.right;
-        const chartHeight = height - padding.top - padding.bottom;
-        if (chartWidth <= 0 || chartHeight <= 0) return;
-
-        const valuePool = series.reduce((acc, item) => acc.concat(item.values), []);
-        const maxSeriesValue = valuePool.length ? Math.max(...valuePool) : 0;
-        const maxValue = Math.max(100, Math.ceil(maxSeriesValue / 10) * 10);
-        const minValue = 0;
-        const valueRange = Math.max(1, maxValue - minValue);
-
-        ctx.font = "12px 'Noto Sans KR', system-ui, sans-serif";
-        ctx.textBaseline = "middle";
-        ctx.strokeStyle = "rgba(148, 163, 184, 0.16)";
-        ctx.fillStyle = "#94a3b8";
-        ctx.textAlign = "right";
-
-        const gridLines = 5;
-        for (let i = 0; i <= gridLines; i++) {
-          const value = minValue + ((maxValue - minValue) * i) / gridLines;
-          const y =
-            padding.top + chartHeight - ((value - minValue) / valueRange) * chartHeight;
-          ctx.beginPath();
-          ctx.moveTo(padding.left, y);
-          ctx.lineTo(padding.left + chartWidth, y);
-          ctx.stroke();
-          ctx.fillText(`${Math.round(value)}`, padding.left - 12, y);
-        }
-
-        ctx.strokeStyle = "rgba(148, 163, 184, 0.35)";
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(padding.left, padding.top);
-        ctx.lineTo(padding.left, padding.top + chartHeight);
-        ctx.lineTo(padding.left + chartWidth, padding.top + chartHeight);
-        ctx.stroke();
-
-        const stepX = labels.length > 1 ? chartWidth / (labels.length - 1) : 0;
-        ctx.lineJoin = "round";
-        ctx.lineCap = "round";
-
-        series.forEach((serie) => {
-          ctx.strokeStyle = serie.color;
-          ctx.lineWidth = 2.2;
-          ctx.beginPath();
-          serie.values.forEach((value, index) => {
-            const x = padding.left + stepX * index;
-            const y =
-              padding.top +
-              chartHeight -
-              ((value - minValue) / valueRange) * chartHeight;
-            if (index === 0) {
-              ctx.moveTo(x, y);
-            } else {
-              ctx.lineTo(x, y);
-            }
-          });
-          ctx.stroke();
-
-          ctx.fillStyle = serie.color;
-          serie.values.forEach((value, index) => {
-            const x = padding.left + stepX * index;
-            const y =
-              padding.top +
-              chartHeight -
-              ((value - minValue) / valueRange) * chartHeight;
-            ctx.beginPath();
-            ctx.arc(x, y, 2.8, 0, Math.PI * 2);
-            ctx.fill();
-          });
+          gaugeGrid.appendChild(card);
         });
 
-        ctx.fillStyle = "#94a3b8";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "top";
-
-        const labelCount = labels.length;
-        const indices = new Set();
-        if (labelCount >= 1) {
-          indices.add(0);
-          indices.add(labelCount - 1);
-          if (labelCount === 3) {
-            indices.add(1);
-          } else if (labelCount >= 4) {
-            indices.add(Math.floor((labelCount - 1) / 3));
-            indices.add(Math.floor(((labelCount - 1) * 2) / 3));
-          }
-        }
-
-        indices.forEach((index) => {
-          const x = padding.left + stepX * index;
-          ctx.fillText(labels[index], x, padding.top + chartHeight + 8);
+        networkConfig.forEach((config) => {
+          const rawValue = Number(latest[config.key]);
+          const formatted = Number.isFinite(rawValue)
+            ? rawValue.toFixed(2)
+            : "-";
+          const item = document.createElement("div");
+          item.className = "metric-item";
+          item.innerHTML = `
+            <span class="label">${config.label}</span>
+            <span class="value">${formatted}${config.suffix}</span>
+          `;
+          networkStats.appendChild(item);
         });
-      }
-
-      function renderMetricChart(metrics) {
-        if (!metrics.length) {
-          clearCanvas(resourceCanvas);
-          chartLegend.innerHTML = "";
-          return;
-        }
-        const chronological = [...metrics].reverse();
-        const labels = chronological.map((row) => {
-          const stamp = row.sampled_at || row.recorded_at || "";
-          return stamp.replace("T", " ").slice(0, 19);
-        });
-
-        const series = chartSeriesConfig.map((config) => ({
-          key: config.key,
-          label: config.label,
-          color: config.color,
-          values: chronological.map((row) => Number(row[config.key]) || 0),
-        }));
-
-        drawLineChart(resourceCanvas, labels, series);
-
-        chartLegend.innerHTML = series
-          .map(
-            (serie) => `
-              <span class="legend-item">
-                <span class="legend-color" style="background:${serie.color}"></span>
-                ${serie.label}
-              </span>
-            `
-          )
-          .join("");
       }
 
       function renderLogs(rows, target) {
@@ -540,6 +444,7 @@
           `;
           return;
         }
+
         rows.forEach((row) => {
           const tr = document.createElement("tr");
           tr.innerHTML = `
@@ -558,16 +463,27 @@
             fetchJSON("/logs/syslog?limit=25"),
             fetchJSON("/logs/ipmi?limit=25"),
           ]);
-          renderMetricCards(metrics);
-          renderMetricChart(metrics);
+
+          renderUsageMetrics(metrics);
           renderLogs(syslogs, syslogTable);
           renderLogs(ipmiLogs, ipmiTable);
+
           syslogCount.textContent = `${syslogs.length} 건`;
           ipmiCount.textContent = `${ipmiLogs.length} 건`;
           lastUpdated.textContent = `마지막 업데이트: ${new Date().toLocaleString()}`;
         } catch (error) {
-          clearCanvas(resourceCanvas);
-          chartLegend.innerHTML = "";
+          gaugeGrid.innerHTML =
+            '<p class="empty-state">메트릭을 불러오지 못했습니다.</p>';
+          networkStats.innerHTML = "";
+          syslogTable.innerHTML = `
+            <tr><td colspan="3" class="empty-state">데이터 갱신 오류</td></tr>
+          `;
+          ipmiTable.innerHTML = `
+            <tr><td colspan="3" class="empty-state">데이터 갱신 오류</td></tr>
+          `;
+          syslogCount.textContent = "0 건";
+          ipmiCount.textContent = "0 건";
+          metricTimestamp.textContent = "샘플 없음";
           lastUpdated.textContent = `데이터 갱신 오류: ${error.message}`;
         }
       }
