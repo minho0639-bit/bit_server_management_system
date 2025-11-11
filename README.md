@@ -9,6 +9,7 @@
 - **수집기/저장소**: 수집된 메트릭을 저장하는 최소한의 스토리지 계층
 - **API 레이어**: 모니터링 데이터 조회 및 알람 트리거
 - **대시보드**: 실시간/히스토리컬 조회, 기본 알람 설정 UI
+- **로그 수집기**: `/var/log/syslog` 및 `ipmitool sel list` 결과를 주기적으로 수집·보관하여 이벤트 트러블슈팅 지원
 
 ## 기술 스택 제안
 - **에이전트**: Python 기반 lightweight collector (psutil 등 활용)
@@ -21,6 +22,7 @@
 - `collector` → 수신 후 DB 저장 및 알람 로직 수행
 - `api` → 대시보드와 외부 자동화 시스템에 데이터 제공
 - `dashboard` → API 연동을 통한 UI 표시
+- `log-ingestor` → syslog 파일 tailing 및 `ipmitool sel list` 명령 실행 결과를 수집기/저장소로 전달
 
 ## 향후 확장 방향
 - **멀티 서버 통합**: 여러 단일 서버 모니터링 인스턴스를 중앙 허브에서 집계
