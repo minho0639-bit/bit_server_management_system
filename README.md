@@ -49,6 +49,10 @@ python agent.py --backend-url http://127.0.0.1:8000
 ### 4. 대시보드 확인
 - 백엔드 실행 후 브라우저에서 `http://<host>:8000/dashboard/` 에 접속하면 **BITWatch 서버모니터링 시스템** UI에서 최신 메트릭과 수집된 로그를 확인할 수 있습니다.
 
+### 5. 권한 및 의존성
+- `/var/log/syslog` 접근에는 루트 권한 혹은 `adm` 그룹 권한이 필요합니다. 권한이 부족하면 에이전트가 자동으로 경고를 출력하고 로그 수집을 건너뜁니다.
+- `ipmitool sel list` 실행을 위해서는 `ipmitool` 바이너리가 설치되어 있고 BMC 접근 권한이 있어야 합니다. 명령 실행에 실패할 경우 에이전트 로그에 경고가 표시됩니다.
+
 ## 주요 API
 - `POST /metrics` : CPU/메모리/디스크/네트워크 메트릭 수집
 - `GET /metrics/recent?limit=50` : 최신 메트릭 조회

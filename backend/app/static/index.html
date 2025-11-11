@@ -15,11 +15,6 @@
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap"
     />
-    <script
-      src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"
-      integrity="sha384-+LuMnHJMhWpxQxF1k3crkq1EanoIoCThByFW7jRFczYAB1nKQtvvwyK/+KqczRHB"
-      crossorigin="anonymous"
-    ></script>
     <style>
       :root {
         color-scheme: dark;
@@ -189,6 +184,34 @@
         margin-top: 1rem;
       }
 
+      .chart-legend {
+        position: absolute;
+        top: 12px;
+        right: 16px;
+        display: flex;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        font-size: 0.75rem;
+        color: var(--text-secondary);
+      }
+
+      .legend-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        background: rgba(15, 23, 42, 0.55);
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        border-radius: 999px;
+        padding: 0.25rem 0.6rem;
+      }
+
+      .legend-color {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+      }
+
       table {
         width: 100%;
         border-collapse: collapse;
@@ -262,6 +285,7 @@
         <div class="metric-grid" id="metricsGrid"></div>
         <div class="chart-wrapper">
           <canvas id="resourceChart" aria-label="자원 사용률 그래프"></canvas>
+          <div class="chart-legend" id="chartLegend"></div>
         </div>
       </section>
       <section>
@@ -305,6 +329,7 @@
       const ipmiCount = document.getElementById("ipmiCount");
       const lastUpdated = document.getElementById("lastUpdated");
       const resourceCanvas = document.getElementById("resourceChart");
+      const chartLegend = document.getElementById("chartLegend");
 
       const metricLabels = {
         cpu_percent: "CPU 사용률 (%)",
@@ -314,7 +339,11 @@
         net_recv: "수신 대역폭 (MB)",
       };
 
-      let resourceChart;
+      const chartSeriesConfig = [
+        { key: "cpu_percent", label: "CPU 사용률", color: "#38bdf8" },
+        { key: "memory_percent", label: "메모리 사용률", color: "#c084fc" },
+        { key: "disk_percent", label: "디스크 사용률", color: "#f472b6" },
+      ];
 
       async function fetchJSON(url) {
         const response = await fetch(url, { cache: "no-store" });
@@ -332,145 +361,173 @@
         }
         const latest = metrics[0];
         Object.entries(metricLabels).forEach(([key, label]) => {
+          const value = Number(latest[key]);
+          const formatted = Number.isFinite(value) ? value.toFixed(2) : "-";
           const card = document.createElement("div");
           card.className = "metric-card";
           card.innerHTML = `
             <h3>${label}</h3>
-            <p>${Number(latest[key]).toFixed(2)}</p>
+            <p>${formatted}</p>
           `;
           metricsGrid.appendChild(card);
         });
       }
 
+      function clearCanvas(canvas) {
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+      }
+
+      function drawLineChart(canvas, labels, series) {
+        const container = canvas.parentElement;
+        if (!container) return;
+
+        const width = container.clientWidth;
+        const height = container.clientHeight;
+        if (!width || !height) return;
+
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = width * dpr;
+        canvas.height = height * dpr;
+        canvas.style.width = `${width}px`;
+        canvas.style.height = `${height}px`;
+
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.scale(dpr, dpr);
+
+        const padding = { top: 26, right: 70, bottom: 36, left: 60 };
+        const chartWidth = width - padding.left - padding.right;
+        const chartHeight = height - padding.top - padding.bottom;
+        if (chartWidth <= 0 || chartHeight <= 0) return;
+
+        const valuePool = series.reduce((acc, item) => acc.concat(item.values), []);
+        const maxSeriesValue = valuePool.length ? Math.max(...valuePool) : 0;
+        const maxValue = Math.max(100, Math.ceil(maxSeriesValue / 10) * 10);
+        const minValue = 0;
+        const valueRange = Math.max(1, maxValue - minValue);
+
+        ctx.font = "12px 'Noto Sans KR', system-ui, sans-serif";
+        ctx.textBaseline = "middle";
+        ctx.strokeStyle = "rgba(148, 163, 184, 0.16)";
+        ctx.fillStyle = "#94a3b8";
+        ctx.textAlign = "right";
+
+        const gridLines = 5;
+        for (let i = 0; i <= gridLines; i++) {
+          const value = minValue + ((maxValue - minValue) * i) / gridLines;
+          const y =
+            padding.top + chartHeight - ((value - minValue) / valueRange) * chartHeight;
+          ctx.beginPath();
+          ctx.moveTo(padding.left, y);
+          ctx.lineTo(padding.left + chartWidth, y);
+          ctx.stroke();
+          ctx.fillText(`${Math.round(value)}`, padding.left - 12, y);
+        }
+
+        ctx.strokeStyle = "rgba(148, 163, 184, 0.35)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(padding.left, padding.top);
+        ctx.lineTo(padding.left, padding.top + chartHeight);
+        ctx.lineTo(padding.left + chartWidth, padding.top + chartHeight);
+        ctx.stroke();
+
+        const stepX = labels.length > 1 ? chartWidth / (labels.length - 1) : 0;
+        ctx.lineJoin = "round";
+        ctx.lineCap = "round";
+
+        series.forEach((serie) => {
+          ctx.strokeStyle = serie.color;
+          ctx.lineWidth = 2.2;
+          ctx.beginPath();
+          serie.values.forEach((value, index) => {
+            const x = padding.left + stepX * index;
+            const y =
+              padding.top +
+              chartHeight -
+              ((value - minValue) / valueRange) * chartHeight;
+            if (index === 0) {
+              ctx.moveTo(x, y);
+            } else {
+              ctx.lineTo(x, y);
+            }
+          });
+          ctx.stroke();
+
+          ctx.fillStyle = serie.color;
+          serie.values.forEach((value, index) => {
+            const x = padding.left + stepX * index;
+            const y =
+              padding.top +
+              chartHeight -
+              ((value - minValue) / valueRange) * chartHeight;
+            ctx.beginPath();
+            ctx.arc(x, y, 2.8, 0, Math.PI * 2);
+            ctx.fill();
+          });
+        });
+
+        ctx.fillStyle = "#94a3b8";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "top";
+
+        const labelCount = labels.length;
+        const indices = new Set();
+        if (labelCount >= 1) {
+          indices.add(0);
+          indices.add(labelCount - 1);
+          if (labelCount === 3) {
+            indices.add(1);
+          } else if (labelCount >= 4) {
+            indices.add(Math.floor((labelCount - 1) / 3));
+            indices.add(Math.floor(((labelCount - 1) * 2) / 3));
+          }
+        }
+
+        indices.forEach((index) => {
+          const x = padding.left + stepX * index;
+          ctx.fillText(labels[index], x, padding.top + chartHeight + 8);
+        });
+      }
+
       function renderMetricChart(metrics) {
         if (!metrics.length) {
-          if (resourceChart) {
-            resourceChart.destroy();
-            resourceChart = undefined;
-          }
+          clearCanvas(resourceCanvas);
+          chartLegend.innerHTML = "";
           return;
         }
         const chronological = [...metrics].reverse();
-        const labels = chronological.map((row) =>
-          (row.sampled_at || row.recorded_at).replace("T", " ").slice(0, 19)
-        );
-        const cpuData = chronological.map((row) => Number(row.cpu_percent));
-        const memoryData = chronological.map((row) => Number(row.memory_percent));
-        const diskData = chronological.map((row) => Number(row.disk_percent));
-        const netSentData = chronological.map((row) => Number(row.net_sent));
-        const netRecvData = chronological.map((row) => Number(row.net_recv));
+        const labels = chronological.map((row) => {
+          const stamp = row.sampled_at || row.recorded_at || "";
+          return stamp.replace("T", " ").slice(0, 19);
+        });
 
-        const datasets = [
-          {
-            label: "CPU %",
-            data: cpuData,
-            borderColor: "#38bdf8",
-            backgroundColor: "rgba(56, 189, 248, 0.15)",
-            tension: 0.35,
-            fill: true,
-            pointRadius: 2,
-            yAxisID: "y",
-          },
-          {
-            label: "메모리 %",
-            data: memoryData,
-            borderColor: "#c084fc",
-            backgroundColor: "rgba(192, 132, 252, 0.18)",
-            tension: 0.35,
-            fill: true,
-            pointRadius: 2,
-            yAxisID: "y",
-          },
-          {
-            label: "디스크 %",
-            data: diskData,
-            borderColor: "#f472b6",
-            backgroundColor: "rgba(244, 114, 182, 0.18)",
-            tension: 0.35,
-            fill: true,
-            pointRadius: 2,
-            yAxisID: "y",
-          },
-          {
-            label: "송신 MB",
-            data: netSentData,
-            borderColor: "#facc15",
-            backgroundColor: "rgba(250, 204, 21, 0.16)",
-            tension: 0.25,
-            fill: false,
-            borderDash: [5, 5],
-            pointRadius: 2,
-            yAxisID: "y1",
-          },
-          {
-            label: "수신 MB",
-            data: netRecvData,
-            borderColor: "#34d399",
-            backgroundColor: "rgba(52, 211, 153, 0.16)",
-            tension: 0.25,
-            fill: false,
-            borderDash: [5, 5],
-            pointRadius: 2,
-            yAxisID: "y1",
-          },
-        ];
+        const series = chartSeriesConfig.map((config) => ({
+          key: config.key,
+          label: config.label,
+          color: config.color,
+          values: chronological.map((row) => Number(row[config.key]) || 0),
+        }));
 
-        if (!resourceChart) {
-          resourceChart = new Chart(resourceCanvas, {
-            type: "line",
-            data: {
-              labels,
-              datasets,
-            },
-            options: {
-              responsive: true,
-              maintainAspectRatio: false,
-              interaction: {
-                mode: "index",
-                intersect: false,
-              },
-              plugins: {
-                legend: {
-                  labels: {
-                    color: "#e2e8f0",
-                  },
-                },
-                tooltip: {
-                  backgroundColor: "rgba(15, 23, 42, 0.9)",
-                  borderColor: "rgba(148, 163, 184, 0.2)",
-                  borderWidth: 1,
-                  padding: 10,
-                  titleColor: "#e2e8f0",
-                  bodyColor: "#e2e8f0",
-                },
-              },
-              scales: {
-                x: {
-                  ticks: { color: "#94a3b8", maxRotation: 45, minRotation: 45 },
-                  grid: { color: "rgba(148, 163, 184, 0.08)" },
-                },
-                y: {
-                  beginAtZero: true,
-                  max: 100,
-                  ticks: { color: "#94a3b8", callback: (value) => `${value}%` },
-                  grid: { color: "rgba(148, 163, 184, 0.08)" },
-                },
-                y1: {
-                  beginAtZero: true,
-                  position: "right",
-                  ticks: { color: "#94a3b8", callback: (value) => `${value} MB` },
-                  grid: { drawOnChartArea: false },
-                },
-              },
-            },
-          });
-        } else {
-          resourceChart.data.labels = labels;
-          resourceChart.data.datasets.forEach((dataset, index) => {
-            dataset.data = datasets[index].data;
-          });
-          resourceChart.update("none");
-        }
+        drawLineChart(resourceCanvas, labels, series);
+
+        chartLegend.innerHTML = series
+          .map(
+            (serie) => `
+              <span class="legend-item">
+                <span class="legend-color" style="background:${serie.color}"></span>
+                ${serie.label}
+              </span>
+            `
+          )
+          .join("");
       }
 
       function renderLogs(rows, target) {
@@ -509,6 +566,8 @@
           ipmiCount.textContent = `${ipmiLogs.length} 건`;
           lastUpdated.textContent = `마지막 업데이트: ${new Date().toLocaleString()}`;
         } catch (error) {
+          clearCanvas(resourceCanvas);
+          chartLegend.innerHTML = "";
           lastUpdated.textContent = `데이터 갱신 오류: ${error.message}`;
         }
       }

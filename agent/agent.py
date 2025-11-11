@@ -16,6 +16,9 @@ import requests
 STATE_FILE = Path(__file__).resolve().parent / "agent_state.json"
 SYSLOG_PATH = Path("/var/log/syslog")
 
+SYSLOG_WARNING_EMITTED = False
+IPMI_WARNING_EMITTED = False
+
 
 def load_state() -> Dict[str, Any]:
     if not STATE_FILE.exists():
@@ -50,6 +53,7 @@ def collect_metrics() -> Dict[str, Any]:
 
 
 def read_syslog(offset: int = 0, max_bytes: int = 1024 * 512) -> Tuple[int, List[Dict[str, Any]]]:
+    global SYSLOG_WARNING_EMITTED
     if not SYSLOG_PATH.exists():
         return offset, []
 
@@ -63,10 +67,20 @@ def read_syslog(offset: int = 0, max_bytes: int = 1024 * 512) -> Tuple[int, List
     if offset > size:
         offset = 0
 
-    with SYSLOG_PATH.open("r", encoding="utf-8", errors="ignore") as fp:
-        fp.seek(offset)
-        data = fp.read(max_bytes)
-        new_offset = fp.tell()
+    try:
+        with SYSLOG_PATH.open("r", encoding="utf-8", errors="ignore") as fp:
+            fp.seek(offset)
+            data = fp.read(max_bytes)
+            new_offset = fp.tell()
+    except OSError as exc:
+        if not SYSLOG_WARNING_EMITTED:
+            print(f"[WARN] Unable to read syslog ({SYSLOG_PATH}): {exc}")
+            SYSLOG_WARNING_EMITTED = True
+        return offset, []
+
+    if SYSLOG_WARNING_EMITTED:
+        print("[INFO] syslog access restored.")
+        SYSLOG_WARNING_EMITTED = False
 
     if not data:
         return offset, []
@@ -87,6 +101,7 @@ def read_syslog(offset: int = 0, max_bytes: int = 1024 * 512) -> Tuple[int, List
 
 
 def collect_ipmi() -> Tuple[str, List[Dict[str, Any]]]:
+    global IPMI_WARNING_EMITTED
     command = ["ipmitool", "sel", "list"]
     try:
         result = subprocess.run(
@@ -98,12 +113,19 @@ def collect_ipmi() -> Tuple[str, List[Dict[str, Any]]]:
         )
     except FileNotFoundError:
         return "", []
-    except subprocess.SubprocessError:
+    except subprocess.SubprocessError as exc:
+        if not IPMI_WARNING_EMITTED:
+            print(f"[WARN] ipmitool sel list failed: {exc}")
+            IPMI_WARNING_EMITTED = True
         return "", []
 
     output = result.stdout.strip()
     if not output:
         return "", []
+
+    if IPMI_WARNING_EMITTED:
+        print("[INFO] ipmitool SEL access restored.")
+        IPMI_WARNING_EMITTED = False
 
     digest = str(hash(output))
     entries = [
