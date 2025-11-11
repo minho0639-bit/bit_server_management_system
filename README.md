@@ -38,7 +38,15 @@ python agent.py --backend-url http://127.0.0.1:8000
 - `METRICS_INTERVAL`, `LOGS_INTERVAL`, `IPMI_INTERVAL` 환경 변수로 주기 조정이 가능합니다.
 - `ipmitool` 명령이 없는 환경에서는 SEL 로그 전송이 자동으로 생략됩니다.
 
-### 3. 대시보드 확인
+### 3. 자동화된 환경 구성 (선택)
+```bash
+./scripts/setup_envs.sh         # backend/.venv, agent/.venv 모두 설치
+./scripts/setup_envs.sh agent   # 특정 컴포넌트만 설치
+```
+- `PYTHON` 환경 변수를 지정하면 다른 파이썬 인터프리터를 사용할 수 있습니다 (`PYTHON=python3.11 ./scripts/setup_envs.sh`).
+- 이미 `.venv`가 존재하면 재사용하며, `requirements.txt`가 갱신된 경우만 패키지를 재설치합니다.
+
+### 4. 대시보드 확인
 - 백엔드 실행 후 브라우저에서 `http://<host>:8000/dashboard/` 에 접속하면 **BITWatch 서버모니터링 시스템** UI에서 최신 메트릭과 수집된 로그를 확인할 수 있습니다.
 
 ## 주요 API
