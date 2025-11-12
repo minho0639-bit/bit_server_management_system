@@ -150,13 +150,13 @@ export default function AdminResourcesPage() {
             {nodeSummary.map((node) => (
               <div key={node.title} className="rounded-3xl border border-white/10 bg-slate-950/50 p-5">
                 <p className="text-xs uppercase tracking-[0.35em] text-slate-300/80">{node.title}</p>
-                <p className="mt-3 text-lg font-semibold text-white">
-                  Ready {node.ready}/{node.capacity}
-                </p>
+                  <p className="mt-3 text-lg font-semibold text-white">
+                    정상 {node.ready}/{node.capacity}
+                  </p>
                 <div className="mt-4 space-y-3 text-xs text-slate-300">
-                  <p>온도 {node.temp}</p>
+                    <p>평균 온도 {node.temp}</p>
                   <div className="space-y-1">
-                    <p>사용률</p>
+                      <p>평균 사용률</p>
                     <div className="h-2 rounded-full bg-white/5">
                       <div
                         className="h-full rounded-full bg-gradient-to-r from-sky-400 via-cyan-300 to-teal-200"

@@ -169,72 +169,101 @@ export default function NodeMonitorOverview({ className }: NodeMonitorOverviewPr
     [nodeResources, resourceErrors],
   );
 
-  const aggregates = useMemo(() => {
-    if (nodes.length === 0) {
-      return {
-        healthy: 0,
-        warning: 0,
-        critical: 0,
-        avgCpu: 0,
-        avgMemory: 0,
-        peakTraffic: 0,
-        sampleCount: 0,
-      };
-    }
-      return nodes.reduce(
+  const aggregates = useMemo(
+    () =>
+      nodes.reduce(
         (acc, node) => {
           const status = deriveStatus(node.id);
           acc[status] += 1;
-
-          const resource = nodeResources[node.id];
-          if (resource) {
-            acc.avgCpu += resource.cpu.usagePercent;
-            acc.avgMemory += resource.memory.usagePercent;
-            const gpuUsage =
-              resource.gpus && resource.gpus.length > 0
-                ? Math.max(...resource.gpus.map((gpu) => gpu.usagePercent ?? 0), 0)
-                : 0;
-            acc.avgGpu += gpuUsage;
-            acc.peakTraffic = Math.max(
-              acc.peakTraffic,
-              resource.network.inboundMbps,
-              resource.network.outboundMbps,
-            );
-            acc.sampleCount += 1;
-          }
           return acc;
         },
-        {
-          healthy: 0,
-          warning: 0,
-          critical: 0,
-          avgCpu: 0,
-          avgMemory: 0,
-          avgGpu: 0,
-          peakTraffic: 0,
-          sampleCount: 0,
-        },
-      );
-  }, [deriveStatus, nodeResources, nodes]);
-
-  const averages = useMemo(() => {
-    if (aggregates.sampleCount === 0) {
-        return {
-          avgCpu: 0,
-          avgMemory: 0,
-          avgGpu: 0,
-          peakTraffic: 0,
-        };
-    }
-    return {
-      avgCpu: Number((aggregates.avgCpu / aggregates.sampleCount).toFixed(1)),
-      avgMemory: Number(
-        (aggregates.avgMemory / aggregates.sampleCount).toFixed(1),
+        { healthy: 0, warning: 0, critical: 0 },
       ),
-        avgGpu: Number((aggregates.avgGpu / aggregates.sampleCount).toFixed(1)),
-      peakTraffic: Number(aggregates.peakTraffic.toFixed(2)),
+    [deriveStatus, nodes],
+  );
+
+  type ZoneKey = "gpu" | "cpu" | "storage";
+
+  const ZONE_CONFIG: Record<
+    ZoneKey,
+    { label: string; accent: string; description: string }
+  > = {
+    gpu: {
+      label: "GPU 존",
+      accent: "from-sky-500/20 via-cyan-400/10 to-transparent",
+      description: "고성능 연산 노드",
+    },
+    cpu: {
+      label: "CPU 존",
+      accent: "from-emerald-500/20 via-teal-400/10 to-transparent",
+      description: "범용 컴퓨팅 노드",
+    },
+    storage: {
+      label: "스토리지 존",
+      accent: "from-amber-400/20 via-orange-300/10 to-transparent",
+      description: "고속 데이터 노드",
+    },
+  };
+
+  const zoneStats = useMemo(() => {
+    const base = () => ({
+      total: 0,
+      healthy: 0,
+      warning: 0,
+      critical: 0,
+      avgCpu: 0,
+      avgGpu: 0,
+      avgMemory: 0,
+      sampleCount: 0,
+    });
+
+    const stats: Record<ZoneKey, ReturnType<typeof base>> = {
+      gpu: base(),
+      cpu: base(),
+      storage: base(),
     };
-  }, [aggregates]);
+
+    nodes.forEach((node) => {
+      let zone: ZoneKey | null = null;
+      if (node.labels.includes("GPU 존")) zone = "gpu";
+      else if (node.labels.includes("CPU 존")) zone = "cpu";
+      else if (node.labels.includes("스토리지 존")) zone = "storage";
+
+      if (!zone) {
+        return;
+      }
+
+      const entry = stats[zone];
+      entry.total += 1;
+      const status = deriveStatus(node.id);
+      entry[status] += 1;
+
+      const resource = nodeResources[node.id];
+      if (resource) {
+        entry.avgCpu += resource.cpu.usagePercent;
+        entry.avgMemory += resource.memory.usagePercent;
+        const gpuUsage =
+          resource.gpus && resource.gpus.length > 0
+            ? Math.max(...resource.gpus.map((gpu) => gpu.usagePercent ?? 0), 0)
+            : 0;
+        entry.avgGpu += gpuUsage;
+        entry.sampleCount += 1;
+      }
+    });
+
+    (Object.keys(stats) as ZoneKey[]).forEach((zone) => {
+      const entry = stats[zone];
+      if (entry.sampleCount > 0) {
+        entry.avgCpu = Number((entry.avgCpu / entry.sampleCount).toFixed(1));
+        entry.avgGpu = Number((entry.avgGpu / entry.sampleCount).toFixed(1));
+        entry.avgMemory = Number(
+          (entry.avgMemory / entry.sampleCount).toFixed(1),
+        );
+      }
+    });
+
+    return stats;
+  }, [deriveStatus, nodeResources, nodes]);
 
   const topNodes = useMemo(() => {
     const enriched = nodes
@@ -298,46 +327,59 @@ export default function NodeMonitorOverview({ className }: NodeMonitorOverviewPr
         </button>
       </div>
 
-        <div className="mt-5 grid gap-4 sm:grid-cols-5">
-        <div className="rounded-2xl border border-white/10 bg-slate-900/40 p-4">
-          <p className="text-[10px] uppercase tracking-widest text-slate-400">
-            전체
-          </p>
-          <p className="mt-2 text-2xl font-semibold text-white">{nodes.length}</p>
+        <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {(Object.keys(ZONE_CONFIG) as ZoneKey[]).map((zone) => {
+            const config = ZONE_CONFIG[zone];
+            const stats = zoneStats[zone];
+            const healthyRatio =
+              stats.total > 0 ? Math.round((stats.healthy / stats.total) * 100) : 0;
+            return (
+              <div
+                key={zone}
+                className="relative overflow-hidden rounded-2xl border border-white/10 bg-slate-900/40 p-4"
+              >
+                <div
+                  className={`pointer-events-none absolute inset-0 -z-10 bg-gradient-to-br ${config.accent}`}
+                />
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-widest text-slate-400">
+                      {config.label}
+                    </p>
+                    <p className="mt-2 text-2xl font-semibold text-white">
+                      {stats.total > 0
+                        ? `정상 ${stats.healthy}/${stats.total}`
+                        : "노드 없음"}
+                    </p>
+                  </div>
+                  <p className="text-xs text-slate-300">{config.description}</p>
+                </div>
+                {stats.total > 0 ? (
+                  <div className="mt-3 h-2 rounded-full bg-white/5">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-emerald-400 via-cyan-300 to-sky-300 transition-all"
+                      style={{ width: `${healthyRatio}%` }}
+                    />
+                  </div>
+                ) : null}
+                <div className="mt-3 grid gap-1 text-[11px] text-slate-300">
+                  <p>
+                    평균 CPU{" "}
+                    {stats.sampleCount > 0 ? `${stats.avgCpu}%` : "--"}
+                  </p>
+                  <p>
+                    평균 GPU{" "}
+                    {stats.sampleCount > 0 ? `${stats.avgGpu}%` : "--"}
+                  </p>
+                  <p>
+                    평균 메모리{" "}
+                    {stats.sampleCount > 0 ? `${stats.avgMemory}%` : "--"}
+                  </p>
+                </div>
+              </div>
+            );
+          })}
         </div>
-        <div className="rounded-2xl border border-white/10 bg-slate-900/40 p-4">
-          <p className="text-[10px] uppercase tracking-widest text-slate-400">
-            평균 CPU
-          </p>
-          <p className="mt-2 text-2xl font-semibold text-sky-200">
-            {averages.avgCpu}%
-          </p>
-        </div>
-        <div className="rounded-2xl border border-white/10 bg-slate-900/40 p-4">
-          <p className="text-[10px] uppercase tracking-widest text-slate-400">
-            평균 메모리
-          </p>
-          <p className="mt-2 text-2xl font-semibold text-sky-200">
-            {averages.avgMemory}%
-          </p>
-        </div>
-        <div className="rounded-2xl border border-white/10 bg-slate-900/40 p-4">
-            <p className="text-[10px] uppercase tracking-widest text-slate-400">
-              평균 GPU
-            </p>
-            <p className="mt-2 text-2xl font-semibold text-sky-200">
-              {averages.avgGpu}%
-            </p>
-          </div>
-          <div className="rounded-2xl border border-white/10 bg-slate-900/40 p-4">
-          <p className="text-[10px] uppercase tracking-widest text-slate-400">
-            최고 트래픽
-          </p>
-          <p className="mt-2 text-2xl font-semibold text-amber-200">
-            {averages.peakTraffic} Mbps
-          </p>
-        </div>
-      </div>
 
       <div className="mt-6 grid gap-3 text-sm text-slate-200 sm:grid-cols-3">
         <div className="flex items-center gap-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3">

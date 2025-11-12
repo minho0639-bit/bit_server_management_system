@@ -81,8 +81,6 @@ export default function NodeRegistryPanel() {
   const [formState, setFormState] = useState({
     name: "",
     ipAddress: "",
-    role: "",
-    labels: "",
     zones: [] as string[],
     sshUser: "",
     sshPort: "",
@@ -221,11 +219,6 @@ export default function NodeRegistryPanel() {
       setSuccess(null);
       setSubmitting(true);
 
-      const textLabels = formState.labels
-        .split(",")
-        .map((label) => label.trim())
-        .filter(Boolean);
-
       const zoneLabels = formState.zones
         .map((zoneId) => {
           const option = ZONE_OPTIONS.find((item) => item.id === zoneId);
@@ -233,12 +226,17 @@ export default function NodeRegistryPanel() {
         })
         .filter((label): label is string => Boolean(label));
 
-      const labels = Array.from(new Set([...zoneLabels, ...textLabels]));
+        if (zoneLabels.length === 0) {
+          setSubmitting(false);
+          setError("최소 한 개의 클러스터 존을 선택하세요.");
+          return;
+        }
+
+        const labels = Array.from(new Set([...zoneLabels]));
 
         const basePayload = {
           name: formState.name.trim(),
           ipAddress: formState.ipAddress.trim(),
-          role: formState.role.trim(),
           labels,
           sshUser: formState.sshUser.trim() || undefined,
         };
@@ -272,10 +270,26 @@ export default function NodeRegistryPanel() {
         };
 
         try {
+          const normalizedName = payload.name.toLowerCase();
+          const derivedRole = formState.zones.includes("zone-gpu")
+            ? "GPU Cluster"
+            : formState.zones.includes("zone-storage")
+              ? "Storage Node"
+              : formState.zones.includes("zone-cpu")
+                ? "Compute Node"
+                : normalizedName.includes("gpu")
+                  ? "GPU Cluster"
+                  : normalizedName.includes("storage")
+                    ? "Storage Node"
+                    : "Compute Node";
+
           const response = await fetch(url, {
             method,
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
+            body: JSON.stringify({
+              ...payload,
+              role: derivedRole,
+            }),
           });
 
           const result = (await response.json()) as {
@@ -300,8 +314,6 @@ export default function NodeRegistryPanel() {
           setFormState({
             name: "",
             ipAddress: "",
-            role: "",
-            labels: "",
         zones: [],
             sshUser: "",
             sshPort: "",
@@ -333,12 +345,6 @@ export default function NodeRegistryPanel() {
       setFormState({
         name: node.name,
         ipAddress: node.ipAddress,
-        role: node.role,
-        labels: node.labels
-          .filter(
-            (label) => !ZONE_OPTIONS.some((option) => option.label === label),
-          )
-          .join(", "),
         zones: ZONE_OPTIONS.filter((option) =>
           node.labels.includes(option.label),
         ).map((option) => option.id),
@@ -354,8 +360,6 @@ export default function NodeRegistryPanel() {
       setFormState({
         name: "",
         ipAddress: "",
-        role: "",
-        labels: "",
         zones: [],
         sshUser: "",
         sshPort: "",
@@ -469,21 +473,6 @@ export default function NodeRegistryPanel() {
             </div>
             <div className="space-y-2">
               <label className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-300">
-                역할 / 영역
-              </label>
-              <input
-                type="text"
-                required
-                value={formState.role}
-                onChange={(event) =>
-                  setFormState((prev) => ({ ...prev, role: event.target.value }))
-                }
-                className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-white outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-400/40"
-                placeholder="GPU Cluster / Storage / Control Plane"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-300">
                 클러스터 존
               </label>
               <div className="grid gap-2 rounded-2xl border border-white/10 bg-slate-950/60 p-4 text-xs text-slate-200">
@@ -517,20 +506,9 @@ export default function NodeRegistryPanel() {
                   );
                 })}
               </div>
-            </div>
-            <div className="space-y-2">
-              <label className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-300">
-                레이블 (쉼표 구분)
-              </label>
-              <input
-                type="text"
-                value={formState.labels}
-                onChange={(event) =>
-                  setFormState((prev) => ({ ...prev, labels: event.target.value }))
-                }
-                className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-white outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-400/40"
-                placeholder="zone-a, gpu, maintenance"
-              />
+                <p className="text-[11px] text-slate-400">
+                  여러 존을 선택할 수 있으며, 선택한 존 레이블이 자동으로 적용됩니다.
+                </p>
             </div>
             <div className="space-y-2">
               <label className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-300">
