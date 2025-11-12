@@ -1,96 +1,281 @@
 import Link from "next/link";
 import {
-  AlertTriangle,
+  Activity,
   ArrowUpRight,
   BarChart3,
-  BellRing,
+  CircleCheckBig,
   Cpu,
   Gauge,
   HardDrive,
+  Loader2,
+  Server,
   ServerCog,
+  TriangleAlert,
 } from "lucide-react";
 
 import { PortalHeader } from "@/components/portal/portal-header";
+import {
+  getAllocationOverview,
+  type ResourceRequest,
+  type ResourceRequestStatus,
+} from "@/lib/admin-resource-allocations";
+import { listStoredNodes } from "@/lib/admin-node-store";
+import { createNodeTelemetry } from "@/lib/admin-node-telemetry";
+import { getResourceCapacity } from "@/lib/resource-capacity-store";
 import NodeMonitorOverview from "./node-monitor-overview";
 
-const opsMetrics = [
-  {
-    title: "GPU 클러스터",
-    value: "92%",
-    sub: "노드 184/200 활성",
-    status: "주의",
-    accent: "from-orange-400/40 via-amber-300/30 to-transparent",
+const ALLOCATION_STATUS_STYLE = {
+  deploying: "border-sky-400/40 bg-sky-500/10 text-sky-100",
+  running: "border-emerald-400/40 bg-emerald-500/10 text-emerald-100",
+  failed: "border-rose-400/40 bg-rose-500/10 text-rose-100",
+  terminated: "border-slate-400/40 bg-slate-500/10 text-slate-100",
+} as const;
+
+const ALLOCATION_STATUS_LABEL = {
+  deploying: "배포 중",
+  running: "실행 중",
+  failed: "실패",
+  terminated: "종료",
+} as const;
+
+type ClusterZoneKey = "gpu" | "cpu" | "storage";
+
+const CLUSTER_ZONE_META: Record<
+  ClusterZoneKey,
+  { label: string; description: string; accent: string; icon: typeof Gauge }
+> = {
+  gpu: {
+    label: "GPU 존",
+    description: "고성능 연산 노드",
+    accent: "from-sky-400/20 via-cyan-300/10 to-transparent",
     icon: Gauge,
   },
-  {
-    title: "CPU 클러스터",
-    value: "78%",
-    sub: "노드 420/512 활성",
-    status: "정상",
-    accent: "from-emerald-400/40 via-teal-300/30 to-transparent",
+  cpu: {
+    label: "CPU 존",
+    description: "범용 컴퓨팅 노드",
+    accent: "from-emerald-400/20 via-teal-300/10 to-transparent",
     icon: Cpu,
   },
-  {
-    title: "스토리지",
-    value: "65%",
-    sub: "2.3PB / 3.6PB",
-    status: "정상",
-    accent: "from-sky-400/40 via-cyan-300/30 to-transparent",
+  storage: {
+    label: "스토리지 존",
+    description: "고속 데이터 노드",
+    accent: "from-amber-400/20 via-orange-300/10 to-transparent",
     icon: HardDrive,
   },
-  {
-    title: "대기 요청",
-    value: "5건",
-    sub: "SLA 4시간 내 처리",
-    status: "긴급",
-    accent: "from-rose-400/40 via-pink-300/30 to-transparent",
-    icon: AlertTriangle,
-  },
-];
+};
 
-const pendingRequests = [
-  {
-    id: "REQ-240313-02",
-    project: "국가재난 AI 분석",
-    priority: "HIGH",
-    request: "GPU 12, CPU 240",
-    submitted: "35분 전",
-  },
-  {
-    id: "REQ-240312-08",
-    project: "바이오 데이터 레이크",
-    priority: "MEDIUM",
-    request: "CPU 960, 스토리지 80TB",
-    submitted: "2시간 전",
-  },
-  {
-    id: "REQ-240312-01",
-    project: "위성 관측 실시간 분석",
-    priority: "HIGH",
-    request: "GPU 8, CPU 320",
-    submitted: "3시간 전",
-  },
-];
+const STATUS_STYLE: Record<
+  "healthy" | "warning" | "critical",
+  string
+> = {
+  healthy: "border-emerald-500/30 bg-emerald-500/10 text-emerald-100",
+  warning: "border-amber-500/30 bg-amber-500/10 text-amber-100",
+  critical: "border-rose-500/30 bg-rose-500/10 text-rose-100",
+};
 
-const recentIncidents = [
-  {
-    title: "GPU-Cluster zone-a 노드 불안정",
-    time: "18분 전",
-    status: "조치 완료",
-  },
-  {
-    title: "스토리지 tier-2 대역폭 급증",
-    time: "1시간 전",
-    status: "모니터링",
-  },
-  {
-    title: "Kubernetes API latency 경보",
-    time: "어제 23:40",
-    status: "해결",
-  },
-];
+const STATUS_LABEL: Record<"healthy" | "warning" | "critical", string> = {
+  healthy: "정상",
+  warning: "주의",
+  critical: "위험",
+};
 
-export default function AdminDashboardPage() {
+function formatRelativeTime(iso: string) {
+  const date = new Date(iso);
+  const diffMs = Date.now() - date.getTime();
+  const diffMinutes = Math.round(diffMs / 60000);
+  if (diffMinutes < 1) return "방금 전";
+  if (diffMinutes < 60) return `${diffMinutes}분 전`;
+  const diffHours = Math.round(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours}시간 전`;
+  const diffDays = Math.round(diffHours / 24);
+  return `${diffDays}일 전`;
+}
+
+function summarizeRequirements(requirements?: ResourceRequest["requirements"]) {
+  if (!requirements) return "요건 미정";
+  const parts: string[] = [];
+  if (requirements.gpuCount) parts.push(`GPU ${requirements.gpuCount}`);
+  if (requirements.cpuCores) parts.push(`CPU ${requirements.cpuCores}`);
+  if (requirements.memoryGb) parts.push(`RAM ${requirements.memoryGb}GB`);
+  if (requirements.storageTb) parts.push(`스토리지 ${requirements.storageTb}TB`);
+  return parts.length ? parts.join(" · ") : "요건 미정";
+}
+
+const REQUEST_STATUS_LABEL: Record<ResourceRequestStatus, string> = {
+  pending: "대기",
+  allocating: "할당 중",
+  fulfilled: "완료",
+  archived: "종료",
+};
+
+export const dynamic = "force-dynamic";
+
+export default async function AdminDashboardPage() {
+  const [{ requests, allocations }, nodes, capacity] = await Promise.all([
+    getAllocationOverview(),
+    listStoredNodes(),
+    getResourceCapacity(),
+  ]);
+
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const requestById = new Map(requests.map((request) => [request.id, request]));
+
+  const allocationCounts = allocations.reduce(
+    (acc, allocation) => {
+      acc[allocation.status] += 1;
+      return acc;
+    },
+    {
+      deploying: 0,
+      running: 0,
+      failed: 0,
+      terminated: 0,
+    },
+  );
+
+  const recentAllocations = allocations
+    .slice()
+    .sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    )
+    .slice(0, 5);
+
+  const totalActiveNodes = new Set(
+    allocations
+      .filter((allocation) => allocation.status === "running")
+      .map((allocation) => allocation.nodeId),
+  ).size;
+
+  const runningAllocations = allocations.filter(
+    (allocation) => allocation.status === "running",
+  );
+
+  const resourceUsage = runningAllocations.reduce(
+    (acc, allocation) => {
+      acc.cpuCores += allocation.cpuCores;
+      acc.gpuCount += allocation.gpuCount;
+      acc.memoryGb += allocation.memoryGb;
+      acc.storageGb += allocation.storageGb;
+      return acc;
+    },
+    { cpuCores: 0, gpuCount: 0, memoryGb: 0, storageGb: 0 },
+  );
+
+  const resourceMetrics = [
+    {
+      id: "cpu",
+      label: "CPU 사용량",
+      value: resourceUsage.cpuCores,
+      capacity: capacity.cpu.totalCores,
+      unit: "vCore",
+    },
+    {
+      id: "gpu",
+      label: "GPU 사용량",
+      value: resourceUsage.gpuCount,
+      capacity: capacity.gpu.totalUnits,
+      unit: "GPU",
+    },
+    {
+      id: "memory",
+      label: "메모리 사용량",
+      value: resourceUsage.memoryGb,
+      capacity: capacity.memory.totalGb,
+      unit: "GB",
+    },
+    {
+      id: "storage",
+      label: "스토리지 사용량",
+      value: resourceUsage.storageGb,
+      capacity: capacity.storage.totalGb,
+      unit: "GB",
+    },
+  ];
+
+  const telemetryByNode = new Map(
+    nodes.map((node) => [node.id, createNodeTelemetry(node)]),
+  );
+
+  const zoneSummaries = (Object.keys(CLUSTER_ZONE_META) as ClusterZoneKey[]).map(
+    (key) => {
+      const meta = CLUSTER_ZONE_META[key];
+      const zoneNodes = nodes.filter((node) => node.labels.includes(meta.label));
+      const latestNode = zoneNodes
+        .slice()
+        .sort(
+          (a, b) =>
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+        )[0];
+
+      return {
+        key,
+        meta,
+        nodes: zoneNodes,
+        latestNode,
+      };
+    },
+  );
+
+  const pendingCount = requests.filter(
+    (request) => request.status === "pending",
+  ).length;
+
+  const statusCards = [
+    ...zoneSummaries.map(({ meta, nodes: zoneNodes, latestNode }) => ({
+      title: meta.label,
+      value: `${zoneNodes.length}대`,
+      sub: zoneNodes.length
+        ? `${latestNode?.name ?? "최근 등록"} · ${
+            latestNode?.createdAt
+              ? formatRelativeTime(latestNode.createdAt)
+              : "시간 정보 없음"
+          }`
+        : "등록된 노드 없음",
+      accent: meta.accent,
+      icon: meta.icon,
+      badge: zoneNodes.length ? "등록" : "대기",
+      badgeClass: zoneNodes.length
+        ? "bg-emerald-400/20 text-emerald-200"
+        : "bg-slate-500/30 text-slate-200",
+    })),
+    {
+      title: "리소스 신청",
+      value: `${requests.length}건`,
+      sub:
+        requests.length === 0
+          ? "등록된 신청이 없습니다."
+          : `대기 ${pendingCount}건 · 완료 ${requests.filter((r) => r.status === "fulfilled").length}건`,
+      accent: "from-sky-400/20 via-indigo-300/10 to-transparent",
+      icon: Server,
+      badge: "신청 현황",
+      badgeClass: "bg-sky-400/20 text-sky-200",
+    },
+  ];
+
+  const sortedRequests = requests
+    .slice()
+    .sort(
+      (a, b) =>
+        new Date(b.requestedAt ?? 0).getTime() -
+        new Date(a.requestedAt ?? 0).getTime(),
+    );
+
+  const nodesByZone = zoneSummaries.map(({ key, meta, nodes: zoneNodes }) => ({
+    key,
+    label: meta.label,
+    description: meta.description,
+    nodes: zoneNodes,
+  }));
+
+  const recentNodes = nodes
+    .slice()
+    .sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    )
+    .slice(0, 5);
+
   return (
     <div className="flex min-h-full flex-col">
       <PortalHeader
@@ -121,7 +306,7 @@ export default function AdminDashboardPage() {
 
       <div className="flex-1 space-y-10 px-6 py-8">
         <section className="grid gap-6 xl:grid-cols-4">
-          {opsMetrics.map((metric) => (
+          {statusCards.map((metric) => (
             <div
               key={metric.title}
               className="relative overflow-hidden rounded-3xl border border-white/10 bg-white/5 p-6"
@@ -143,109 +328,425 @@ export default function AdminDashboardPage() {
               <div className="mt-4 flex items-center justify-between text-xs text-slate-300/80">
                 <span>{metric.sub}</span>
                 <span
-                  className={`inline-flex items-center rounded-full px-3 py-1 text-[10px] font-semibold uppercase ${
-                    metric.status === "긴급"
-                      ? "bg-rose-400/20 text-rose-200"
-                      : metric.status === "주의"
-                        ? "bg-amber-400/20 text-amber-200"
-                        : "bg-emerald-400/20 text-emerald-200"
-                  }`}
+                  className={`inline-flex items-center rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-wide ${metric.badgeClass}`}
                 >
-                  {metric.status}
+                  {metric.badge}
                 </span>
               </div>
             </div>
           ))}
         </section>
 
-        <section className="grid gap-6 lg:grid-cols-[minmax(0,_1.05fr)_minmax(0,_0.95fr)]">
-          <div className="rounded-3xl border border-white/10 bg-white/5 p-6">
+        <section className="grid gap-6 rounded-3xl border border-white/10 bg-white/5 p-6 md:grid-cols-[minmax(0,_1.4fr)_minmax(0,_0.6fr)]">
+          <div>
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs uppercase tracking-[0.35em] text-slate-300/80">
-                  승인 요청
+                <p className="text-xs uppercase tracking-[0.35em] text-sky-200">
+                  리소스 신청 현황
                 </p>
-                <h2 className="mt-2 text-xl font-semibold text-white">대기 중 워크로드</h2>
+                <h3 className="mt-2 text-xl font-semibold text-white">
+                  대기 및 진행 중인 요청
+                </h3>
               </div>
               <Link
-                href="/admin/requests"
+                href="/admin/resources/allocations"
                 className="inline-flex items-center gap-2 rounded-full border border-white/15 px-4 py-2 text-xs font-semibold text-slate-100 transition hover:border-sky-200 hover:text-sky-100"
               >
-                전체 보기
+                컨테이너 할당 열기
                 <ArrowUpRight className="h-3.5 w-3.5" />
               </Link>
             </div>
-            <div className="mt-6 overflow-hidden rounded-2xl border border-white/5">
-              <table className="min-w-full divide-y divide-white/5 text-sm text-slate-200">
-                <thead className="bg-white/5 text-xs uppercase tracking-wider text-slate-300">
+            {sortedRequests.length === 0 ? (
+              <div className="mt-6 rounded-2xl border border-dashed border-white/20 bg-slate-950/40 p-8 text-center text-sm text-slate-300">
+                대기 중인 신청이 없습니다. 사용자가 워크로드를 신청하면 이곳에서 검토를 시작할 수 있습니다.
+              </div>
+            ) : (
+              <div className="mt-6 overflow-hidden rounded-2xl border border-white/5">
+                <table className="min-w-full divide-y divide-white/5 text-sm text-slate-200">
+                  <thead className="bg-white/5 text-xs uppercase tracking-wider text-slate-300">
+                    <tr>
+                      <th className="px-4 py-3 text-left">요청 ID</th>
+                      <th className="px-4 py-3 text-left">프로젝트</th>
+                      <th className="px-4 py-3 text-left">요청 자원</th>
+                      <th className="px-4 py-3 text-left">상태</th>
+                      <th className="px-4 py-3 text-left">요청 시각</th>
+                      <th className="px-4 py-3 text-left">태그</th>
+                      <th className="px-4 py-3 text-right" />
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5">
+                    {sortedRequests.map((request) => (
+                      <tr key={request.id} className="hover:bg-white/5">
+                        <td className="px-4 py-4 font-semibold text-white">
+                          {request.id}
+                        </td>
+                        <td className="px-4 py-4">
+                          <p className="font-semibold text-white">{request.project}</p>
+                          <p className="text-[11px] text-slate-400">
+                            {request.organisation} · {request.owner}
+                          </p>
+                        </td>
+                        <td className="px-4 py-4 text-sm text-slate-300">
+                          {summarizeRequirements(request.requirements)}
+                        </td>
+                        <td className="px-4 py-4">
+                          <span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-sky-100">
+                            {REQUEST_STATUS_LABEL[request.status]}
+                          </span>
+                        </td>
+                        <td className="px-4 py-4 text-xs text-slate-400">
+                          {request.requestedAt
+                            ? formatRelativeTime(request.requestedAt)
+                            : "시간 정보 없음"}
+                        </td>
+                        <td className="px-4 py-4">
+                          <div className="flex flex-wrap gap-1">
+                            {(request.tags ?? []).length === 0 ? (
+                              <span className="text-[11px] text-slate-500">태그 없음</span>
+                            ) : (
+                              request.tags.map((tag) => (
+                                <span
+                                  key={tag}
+                                  className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] uppercase tracking-widest text-slate-300"
+                                >
+                                  {tag}
+                                </span>
+                              ))
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-4 py-4 text-right">
+                          <Link
+                            href={`/admin/requests/${request.id}`}
+                            className="inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-2 text-xs font-semibold text-sky-100 transition hover:bg-white/20"
+                          >
+                            상세
+                            <ServerCog className="h-3.5 w-3.5" />
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-4 rounded-3xl border border-white/10 bg-slate-950/60 p-6">
+            <div>
+              <p className="text-xs uppercase tracking-[0.35em] text-slate-300/80">
+                최근 등록 노드
+              </p>
+              <h3 className="mt-2 text-lg font-semibold text-white">인프라 업데이트</h3>
+            </div>
+            <div className="mt-2 space-y-4 text-xs text-slate-300">
+              {recentNodes.length === 0 ? (
+                <p className="rounded-2xl border border-dashed border-white/15 bg-slate-950/40 p-4 text-center text-slate-400">
+                  아직 등록된 노드가 없습니다. 자원 & 노드 페이지에서 신규 노드를 추가하세요.
+                </p>
+              ) : (
+                recentNodes.map((node) => (
+                  <div key={node.id} className="rounded-2xl border border-white/10 bg-slate-950/50 p-4">
+                    <p className="text-sm font-semibold text-white">{node.name}</p>
+                    <p className="mt-1 text-[11px] text-slate-400">
+                      {node.ipAddress} · {node.role}
+                    </p>
+                    <p className="mt-2 text-[11px] text-slate-400">
+                      등록 {formatRelativeTime(node.createdAt)}
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-1 text-[10px] uppercase tracking-widest text-slate-400">
+                      {(node.labels ?? []).map((label) => (
+                        <span key={label} className="rounded-full bg-white/10 px-2 py-0.5">
+                          {label}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </section>
+
+        <section className="grid gap-6 rounded-3xl border border-white/10 bg-gradient-to-br from-white/10 via-slate-900/70 to-slate-950/80 p-6 xl:grid-cols-[minmax(0,_1.15fr)_minmax(0,_0.85fr)]">
+          <div className="space-y-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs uppercase tracking-[0.35em] text-sky-200">
+                  컨테이너 워크로드
+                </p>
+                <h2 className="mt-2 text-xl font-semibold text-white">
+                  할당된 컨테이너 상태
+                </h2>
+              </div>
+              <Link
+                href="/admin/resources/allocations"
+                className="inline-flex items-center gap-2 rounded-full bg-emerald-400 px-4 py-2 text-xs font-semibold text-slate-950 shadow-[0_12px_30px_rgba(52,211,153,0.35)] transition hover:bg-emerald-300"
+              >
+                상세 보기
+                <ArrowUpRight className="h-3.5 w-3.5" />
+              </Link>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="rounded-3xl border border-white/10 bg-slate-950/60 p-5">
+                <div className="flex items-center justify-between text-xs uppercase tracking-[0.3em] text-slate-400">
+                  <span>실행 중</span>
+                  <CircleCheckBig className="h-4 w-4 text-emerald-300" />
+                </div>
+                <p className="mt-4 text-3xl font-semibold text-emerald-100">
+                  {allocationCounts.running}
+                </p>
+                <p className="mt-2 text-xs text-slate-400">
+                  활성 컨테이너 파드 · 노드 {totalActiveNodes}대
+                </p>
+              </div>
+              <div className="rounded-3xl border border-white/10 bg-slate-950/60 p-5">
+                <div className="flex items-center justify-between text-xs uppercase tracking-[0.3em] text-slate-400">
+                  <span>배포 중</span>
+                  <Loader2 className="h-4 w-4 text-sky-300" />
+                </div>
+                <p className="mt-4 text-3xl font-semibold text-sky-100">
+                  {allocationCounts.deploying}
+                </p>
+                <p className="mt-2 text-xs text-slate-400">
+                  파이프라인 진행 중 컨테이너
+                </p>
+              </div>
+              <div className="rounded-3xl border border-white/10 bg-slate-950/60 p-5">
+                <div className="flex items-center justify-between text-xs uppercase tracking-[0.3em] text-slate-400">
+                  <span>장애 발생</span>
+                  <TriangleAlert className="h-4 w-4 text-rose-300" />
+                </div>
+                <p className="mt-4 text-3xl font-semibold text-rose-200">
+                  {allocationCounts.failed}
+                </p>
+                <p className="mt-2 text-xs text-slate-400">
+                  확인 필요 · 자동 롤백 미적용
+                </p>
+              </div>
+              <div className="rounded-3xl border border-white/10 bg-slate-950/60 p-5">
+                <div className="flex items-center justify-between text-xs uppercase tracking-[0.3em] text-slate-400">
+                  <span>종료됨</span>
+                  <Activity className="h-4 w-4 text-slate-300" />
+                </div>
+                <p className="mt-4 text-3xl font-semibold text-slate-200">
+                  {allocationCounts.terminated}
+                </p>
+                <p className="mt-2 text-xs text-slate-400">
+                  완료 또는 수동 종료된 컨테이너
+                </p>
+              </div>
+            </div>
+
+            <div className="overflow-hidden rounded-2xl border border-white/10">
+              <table className="min-w-full divide-y divide-white/10 text-left text-xs text-slate-200">
+                <thead className="bg-slate-950/70 text-[11px] uppercase tracking-widest text-slate-400">
                   <tr>
-                    <th className="px-4 py-3 text-left">요청 ID</th>
-                    <th className="px-4 py-3 text-left">프로젝트</th>
-                    <th className="px-4 py-3 text-left">요청 자원</th>
-                    <th className="px-4 py-3 text-left">우선순위</th>
-                    <th className="px-4 py-3 text-left">요청 시각</th>
-                    <th className="px-4 py-3 text-left" />
+                    <th className="px-4 py-3">컨테이너</th>
+                    <th className="px-4 py-3">신청 / 노드</th>
+                    <th className="px-4 py-3">리소스</th>
+                    <th className="px-4 py-3">상태</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-white/5">
-                  {pendingRequests.map((request) => (
-                    <tr key={request.id} className="hover:bg-white/5">
-                      <td className="px-4 py-4 font-semibold text-white">{request.id}</td>
-                      <td className="px-4 py-4">{request.project}</td>
-                      <td className="px-4 py-4 text-sm text-slate-300">{request.request}</td>
-                      <td className="px-4 py-4">
-                        <span
-                          className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ${
-                            request.priority === "HIGH"
-                              ? "bg-rose-400/20 text-rose-200"
-                              : request.priority === "MEDIUM"
-                                ? "bg-amber-400/20 text-amber-200"
-                                : "bg-emerald-400/20 text-emerald-200"
-                          }`}
-                        >
-                          {request.priority}
-                        </span>
-                      </td>
-                      <td className="px-4 py-4 text-xs text-slate-400">{request.submitted}</td>
-                      <td className="px-4 py-4 text-right">
+                <tbody className="divide-y divide-white/10">
+                  {recentAllocations.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={4}
+                        className="px-6 py-10 text-center text-sm text-slate-400"
+                      >
+                        아직 생성된 컨테이너 할당이 없습니다.{" "}
                         <Link
-                          href={`/admin/requests/${request.id}`}
-                          className="inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-2 text-xs font-semibold text-sky-100 transition hover:bg-white/20"
+                          href="/admin/resources/allocations"
+                          className="text-sky-200 underline underline-offset-4"
                         >
-                          검토
-                          <ServerCog className="h-3.5 w-3.5" />
-                        </Link>
+                          컨테이너 할당 메뉴
+                        </Link>{" "}
+                        에서 첫 배포를 시작하세요.
                       </td>
                     </tr>
-                  ))}
+                  ) : (
+                    recentAllocations.map((allocation) => {
+                      const node = nodeById.get(allocation.nodeId);
+                      const request = requestById.get(allocation.requestId);
+                      return (
+                        <tr key={allocation.id} className="hover:bg-white/5">
+                          <td className="px-4 py-4">
+                            <p className="text-sm font-semibold text-white">
+                              {allocation.containerImage}
+                            </p>
+                            <p className="text-[11px] text-slate-400">
+                              {allocation.namespace} · {allocation.runtime}
+                            </p>
+                            <p className="mt-2 text-[10px] uppercase tracking-widest text-slate-500">
+                              {formatRelativeTime(allocation.createdAt)} ·{" "}
+                              {allocation.version}
+                            </p>
+                          </td>
+                          <td className="px-4 py-4">
+                            <div className="text-[11px] text-slate-300">
+                              <p className="font-semibold text-sky-100">
+                                {request?.project ?? "알 수 없는 신청"}
+                              </p>
+                              <p className="mt-1">
+                                신청 {allocation.requestId}
+                              </p>
+                            </div>
+                            <div className="mt-2 text-[11px] text-slate-400">
+                              <p>
+                                노드 {node?.name ?? "미등록"} ·{" "}
+                                {node?.role ?? "역할 미상"}
+                              </p>
+                              <p className="text-[10px]">
+                                {node
+                                  ? node.labels.join(", ") || "레이블 없음"
+                                  : "노드 정보 없음"}
+                              </p>
+                            </div>
+                          </td>
+                          <td className="px-4 py-4 text-[11px] text-slate-300">
+                            <p>CPU {allocation.cpuCores} vCore</p>
+                            <p>GPU {allocation.gpuCount}</p>
+                            <p>메모리 {allocation.memoryGb} GB</p>
+                            <p>스토리지 {allocation.storageGb} GB</p>
+                          </td>
+                          <td className="px-4 py-4">
+                            <span
+                              className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-[11px] font-semibold ${ALLOCATION_STATUS_STYLE[allocation.status]}`}
+                            >
+                              <Server className="h-3.5 w-3.5" />
+                              {ALLOCATION_STATUS_LABEL[allocation.status]}
+                            </span>
+                            <p className="mt-2 text-[10px] text-slate-400">
+                              담당 {allocation.assignedBy}
+                            </p>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
                 </tbody>
               </table>
             </div>
           </div>
 
-          <div className="flex flex-col gap-6">
-            <div className="rounded-3xl border border-white/10 bg-white/5 p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.35em] text-slate-300/80">
-                    실시간 경보
-                  </p>
-                  <h3 className="mt-2 text-lg font-semibold text-white">알림 피드</h3>
-                </div>
-                <BellRing className="h-4 w-4 text-slate-400" />
-              </div>
-              <div className="mt-4 space-y-4">
-                {recentIncidents.map((incident) => (
-                  <div key={incident.title} className="rounded-2xl border border-white/10 bg-slate-950/50 p-4">
-                    <p className="text-sm font-semibold text-white">{incident.title}</p>
-                    <p className="mt-2 text-xs text-slate-400">{incident.time}</p>
-                    <span className="mt-3 inline-flex rounded-full bg-white/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-widest text-sky-200">
-                      {incident.status}
-                    </span>
-                  </div>
-                ))}
+          <div className="flex flex-col justify-between gap-6 rounded-3xl border border-white/10 bg-slate-950/60 p-6 text-sm text-slate-200">
+            <div>
+              <p className="text-xs uppercase tracking-[0.35em] text-slate-300/80">
+                상태 요약
+              </p>
+              <h3 className="mt-2 text-lg font-semibold text-white">
+                컨테이너 파이프라인 상황판
+              </h3>
+            </div>
+            <div className="grid gap-4 rounded-2xl border border-white/10 bg-slate-950/80 p-4">
+              <p className="text-xs uppercase tracking-[0.35em] text-slate-400">
+                리소스 모니터링
+              </p>
+              <div className="grid gap-3">
+                {resourceMetrics.map((metric) => {
+                  const percent =
+                    metric.capacity > 0
+                      ? Math.min(
+                          100,
+                          Math.round((metric.value / metric.capacity) * 100),
+                        )
+                      : 0;
+                  return (
+                    <div key={metric.id} className="space-y-1.5">
+                      <div className="flex items-center justify-between text-[11px] text-slate-300">
+                        <span>{metric.label}</span>
+                        <span className="font-semibold text-white">
+                          {metric.value.toLocaleString()} /{" "}
+                          {metric.capacity.toLocaleString()} {metric.unit}
+                        </span>
+                      </div>
+                      <div className="h-1.5 rounded-full bg-white/5">
+                        <div
+                          className="h-full rounded-full bg-gradient-to-r from-sky-400 via-cyan-300 to-emerald-300 transition-all"
+                          style={{ width: `${percent}%` }}
+                        />
+                      </div>
+                      <p className="text-[10px] text-slate-500">
+                        사용률 {percent}%
+                      </p>
+                    </div>
+                  );
+                })}
               </div>
             </div>
+            <div className="space-y-4 text-xs text-slate-300">
+              {[
+                {
+                  title: "배포 파이프라인",
+                  value: allocationCounts.deploying,
+                  description:
+                    "CI/CD가 컨테이너 이미지를 노드에 배치 중입니다.",
+                  accent: "from-sky-400 via-blue-400 to-emerald-400",
+                },
+                {
+                  title: "실행 중 워크로드",
+                  value: allocationCounts.running,
+                  description:
+                    "SLA 감시 대상. 지연 경보 발생 시 자동 알림.",
+                  accent: "from-emerald-400 via-teal-400 to-cyan-300",
+                },
+                {
+                  title: "장애/종료 기록",
+                  value: allocationCounts.failed + allocationCounts.terminated,
+                  description:
+                    "최근 24시간 내 실패 또는 종료된 컨테이너 수.",
+                  accent: "from-rose-400 via-orange-400 to-amber-300",
+                },
+              ].map((item) => (
+                <div
+                  key={item.title}
+                  className="rounded-2xl border border-white/10 bg-slate-950/80 p-4"
+                >
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs uppercase tracking-[0.35em] text-slate-400">
+                      {item.title}
+                    </p>
+                    <span className="text-lg font-semibold text-white">
+                      {item.value}
+                    </span>
+                  </div>
+                  <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/5">
+                    <div
+                      className={`h-full w-full bg-gradient-to-r ${item.accent}`}
+                      style={{
+                        opacity:
+                          item.value === 0
+                            ? 0.2
+                            : Math.min(1, 0.25 + item.value / 10),
+                      }}
+                    />
+                  </div>
+                  <p className="mt-3 text-[11px] text-slate-400">
+                    {item.description}
+                  </p>
+                </div>
+              ))}
+            </div>
+            <Link
+              href="/admin/resources/allocations"
+              className="inline-flex items-center justify-center gap-2 rounded-full border border-white/15 px-4 py-2 text-xs font-semibold text-slate-100 transition hover:border-sky-200 hover:text-sky-100"
+            >
+              컨테이너 워크플로 열기
+              <ArrowUpRight className="h-3.5 w-3.5" />
+            </Link>
+            <p className="text-[11px] text-slate-500">
+              자원 총량 기준은{" "}
+              <Link
+                href="/admin/docs/resource-capacity"
+                className="inline-flex items-center gap-1 text-sky-200 underline underline-offset-4"
+              >
+                자원 용량 정의 문서
+                <ArrowUpRight className="h-3 w-3" />
+              </Link>
+              에서 확인하고 수정할 수 있습니다.
+            </p>
           </div>
         </section>
 
@@ -253,30 +754,70 @@ export default function AdminDashboardPage() {
           <div className="rounded-3xl border border-white/10 bg-slate-950/60 p-6">
             <p className="text-xs uppercase tracking-[0.35em] text-sky-200">클러스터 지도</p>
             <h3 className="mt-2 text-lg font-semibold text-white">물리 노드 상태</h3>
-            <div className="mt-6 grid grid-cols-6 gap-3 text-xs">
-              {Array.from({ length: 36 }).map((_, idx) => (
-                <div
-                  key={idx}
-                  className={`aspect-square rounded-xl border border-white/10 ${
-                    idx % 12 === 4
-                      ? "bg-rose-500/30"
-                      : idx % 10 === 3
-                        ? "bg-amber-400/30"
-                        : "bg-emerald-400/25"
-                  }`}
-                />
+            <div className="mt-6 space-y-5 text-xs text-slate-200">
+              {nodesByZone.map((zone) => (
+                <div key={zone.key} className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-semibold text-white">{zone.label}</p>
+                    <span className="text-[11px] text-slate-400">{zone.description}</span>
+                  </div>
+                  {zone.nodes.length === 0 ? (
+                    <p className="rounded-xl border border-dashed border-white/15 bg-white/5 px-4 py-3 text-slate-400">
+                      등록된 노드 없음
+                    </p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {zone.nodes.map((node) => {
+                        const telemetry = telemetryByNode.get(node.id);
+                        const status = telemetry?.status ?? "healthy";
+                        return (
+                          <span
+                            key={node.id}
+                            title={`${node.ipAddress}`}
+                            className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-semibold ${STATUS_STYLE[status]}`}
+                          >
+                            <span className="h-2 w-2 rounded-full bg-current" />
+                            {node.name}
+                            <span className="text-[10px] uppercase tracking-widest text-slate-200/80">
+                              {STATUS_LABEL[status]}
+                            </span>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               ))}
             </div>
-            <div className="mt-4 flex items-center gap-4 text-[10px] uppercase tracking-widest text-slate-400">
-              <span className="inline-flex items-center gap-2"><span className="h-3 w-3 rounded-full bg-emerald-400/80" /> Ready</span>
-              <span className="inline-flex items-center gap-2"><span className="h-3 w-3 rounded-full bg-amber-400/80" /> Warning</span>
-              <span className="inline-flex items-center gap-2"><span className="h-3 w-3 rounded-full bg-rose-500/80" /> NotReady</span>
+            <div className="mt-6 grid gap-3 text-xs text-slate-200">
+              {[
+                { label: "InfiniBand Fabric", metric: "99.92%", detail: "에러 패킷 0.03%" },
+                { label: "동기화 지연", metric: "1.8ms", detail: "SLA 3ms" },
+                { label: "네임스페이스 라우팅", metric: "정상", detail: "최근 전환 12분 전" },
+              ].map((item) => (
+                <div key={item.label} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <p className="text-xs uppercase tracking-[0.35em] text-slate-400">
+                    {item.label}
+                  </p>
+                  <p className="mt-2 text-lg font-semibold text-white">
+                    {item.metric}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-400">{item.detail}</p>
+                </div>
+              ))}
+            </div>
+            <div className="mt-4 flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 p-4">
+              <Server className="h-5 w-5 text-sky-200" />
+              <div>
+                <p className="font-semibold text-white">API Gateway 상태</p>
+                <p className="text-xs text-slate-400">요청 성공률 99.98%, 평균 지연 112ms</p>
+              </div>
             </div>
           </div>
+
           <NodeMonitorOverview className="rounded-3xl border border-white/10 bg-white/5 p-6" />
         </section>
       </div>
     </div>
   );
 }
-
