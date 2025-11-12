@@ -1,16 +1,12 @@
 import Link from "next/link";
 import {
+  AlertTriangle,
   ArrowUpRight,
-  Cpu,
-  DatabaseZap,
-  HardHat,
-  Hexagon,
+  ClipboardCheck,
   Layers,
-  Network,
-  Router,
+  PackagePlus,
   ServerCog,
-  Settings2,
-  Wifi,
+  ShieldCheck,
 } from "lucide-react";
 
 import { PortalHeader } from "@/components/portal/portal-header";
@@ -47,42 +43,45 @@ const nodeSummary = [
   },
 ];
 
-const maintenanceTasks = [
-  {
-    title: "GPU node-3b 패치",
-    window: "3월 14일(금) 02:00-03:00",
-    owner: "SRE 팀",
-  },
-  {
-    title: "스토리지 tier-2 확장",
-    window: "3월 18일(화) 01:00-05:00",
-    owner: "Storage 팀",
-  },
-  {
-    title: "Fabric 스위치 펌웨어",
-    window: "3월 22일(토) 00:30-02:00",
-    owner: "Network 팀",
-  },
-];
-
 const containerProfiles = [
   {
     name: "quantumflow/hpc-gpu:1.4",
     type: "GPU",
     quota: "GPU 4 · CPU 64 · RAM 256GB",
     runtime: "K8s + Slurm",
+    version: "1.4.2",
+    digest: "sha256:93fd...a21c",
+    lastScan: "오늘 09:20",
+    security: "pass" as const,
+    registry: "registry.quantumflow.kr",
+    tag: "stable",
+    changelog: "CUDA 12.2 · NCCL 2.18 · cuDNN 9.1",
   },
   {
     name: "quantumflow/data-pipeline:2.1",
     type: "CPU",
     quota: "CPU 128 · RAM 512GB",
     runtime: "K8s + Airflow",
+    version: "2.1.5",
+    digest: "sha256:8a7c...e4b2",
+    lastScan: "어제 22:15",
+    security: "pass" as const,
+    registry: "registry.quantumflow.kr",
+    tag: "canary",
+    changelog: "Apache Airflow 2.9 · Spark 3.5 패치",
   },
   {
     name: "quantumflow/analysis-lite:1.8",
     type: "CPU",
     quota: "CPU 48 · RAM 192GB",
     runtime: "K8s + Jupyter",
+    version: "1.8.1",
+    digest: "sha256:5b61...9ef0",
+    lastScan: "3일 전",
+    security: "warn" as const,
+    registry: "registry.quantumflow.kr",
+    tag: "lts",
+    changelog: "RStudio 추가 · JupyterLab 4.1",
   },
 ];
 
@@ -184,127 +183,155 @@ export default function AdminResourcesPage() {
             ))}
           </section>
 
-        <section className="grid gap-6 lg:grid-cols-[minmax(0,_1.1fr)_minmax(0,_0.9fr)]">
-          <div className="rounded-3xl border border-white/10 bg-white/5 p-6">
+          <section className="space-y-6 rounded-3xl border border-white/10 bg-white/5 p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs uppercase tracking-[0.35em] text-slate-300/80">리소스 풀</p>
-                <h3 className="mt-2 text-xl font-semibold text-white">클러스터 리밸런싱</h3>
+                <p className="text-xs uppercase tracking-[0.35em] text-slate-300/80">
+                  컨테이너 프로파일
+                </p>
+                <h3 className="mt-2 text-xl font-semibold text-white">
+                  운영 이미지 & 레지스트리
+                </h3>
               </div>
-              <Settings2 className="h-4 w-4 text-slate-400" />
+              <Link
+                href="/admin/resources/allocations"
+                className="inline-flex items-center gap-2 rounded-full border border-white/15 px-4 py-2 text-xs font-semibold text-slate-100 transition hover:border-emerald-300 hover:text-emerald-100"
+              >
+                배포 현황 보기
+                <ArrowUpRight className="h-3.5 w-3.5" />
+              </Link>
             </div>
-            <div className="mt-6 grid gap-4 text-sm text-slate-200">
-              <div className="rounded-2xl border border-white/10 bg-slate-950/50 p-4">
-                <p className="font-semibold text-white">GPU 풀</p>
-                <p className="mt-2 text-xs text-slate-400">자원 재분배 필요 (그래픽 연구기관 요청 증가)</p>
-                <div className="mt-3 flex items-center gap-4 text-xs">
-                  <span className="inline-flex items-center gap-2"><Hexagon className="h-3.5 w-3.5 text-sky-200" /> 사용률 88%</span>
-                  <span className="inline-flex items-center gap-2"><Layers className="h-3.5 w-3.5 text-sky-200" /> 예약 14건</span>
-                </div>
-              </div>
-              <div className="rounded-2xl border border-white/10 bg-slate-950/50 p-4">
-                <p className="font-semibold text-white">CPU 풀</p>
-                <p className="mt-2 text-xs text-slate-400">성능 안정적, 큐 대기 평균 4.2분</p>
-                <div className="mt-3 flex items-center gap-4 text-xs">
-                  <span className="inline-flex items-center gap-2"><Cpu className="h-3.5 w-3.5 text-sky-200" /> 사용률 75%</span>
-                  <span className="inline-flex items-center gap-2"><Layers className="h-3.5 w-3.5 text-sky-200" /> 예약 9건</span>
-                </div>
-              </div>
-              <div className="rounded-2xl border border-white/10 bg-slate-950/50 p-4">
-                <p className="font-semibold text-white">스토리지 풀</p>
-                <p className="mt-2 text-xs text-slate-400">증설 진행 중, tier-2 확장 예약</p>
-                <div className="mt-3 flex items-center gap-4 text-xs">
-                  <span className="inline-flex items-center gap-2"><DatabaseZap className="h-3.5 w-3.5 text-sky-200" /> 사용률 61%</span>
-                  <span className="inline-flex items-center gap-2"><Layers className="h-3.5 w-3.5 text-sky-200" /> 예약 6건</span>
-                </div>
-              </div>
-            </div>
-            <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-4 text-xs text-slate-200">
-              GPU 풀 재분배 정책: 우선순위 조직(국가 연구, 공공 안전) 요청 시 자동 20% 확보. 정책 변경은 보안 승인 필요.
-            </div>
-          </div>
 
-          <div className="flex flex-col gap-4 rounded-3xl border border-white/10 bg-gradient-to-br from-white/10 via-slate-900/70 to-slate-950/80 p-6 text-sm text-slate-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs uppercase tracking-[0.35em] text-sky-200">유지 보수</p>
-                <h3 className="text-lg font-semibold text-white">예정 작업</h3>
-              </div>
-              <HardHat className="h-4 w-4 text-slate-400" />
-            </div>
-            <div className="space-y-4">
-              {maintenanceTasks.map((task) => (
-                <div key={task.title} className="rounded-2xl border border-white/10 bg-slate-950/50 p-4">
-                  <p className="text-sm font-semibold text-white">{task.title}</p>
-                  <p className="mt-1 text-xs text-slate-400">{task.window}</p>
-                  <p className="mt-2 text-[10px] uppercase tracking-widest text-sky-200">{task.owner}</p>
-                </div>
-              ))}
-            </div>
-            <div className="rounded-2xl border border-dashed border-white/20 bg-slate-950/50 p-5 text-xs text-slate-200">
-              유지 보수 기간 중 자동으로 사용자에게 알림이 발송되며, 영향을 받는 네임스페이스는 임시 노드로 이동합니다.
-            </div>
-          </div>
-        </section>
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {containerProfiles.map((profile) => {
+                const isSecure = profile.security === "pass";
+                return (
+                  <div
+                    key={profile.name}
+                    className="rounded-2xl border border-white/10 bg-slate-950/60 p-5 text-sm text-slate-200"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.35em] text-slate-400">
+                          {profile.type}
+                        </p>
+                        <h4 className="mt-2 text-lg font-semibold text-white">
+                          {profile.name}
+                        </h4>
+                        <p className="mt-1 text-xs text-slate-400">
+                          런타임: {profile.runtime}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 text-[11px]">
+                        <span className="rounded-full border border-white/15 px-3 py-1 text-[10px] uppercase tracking-widest text-slate-300">
+                          v{profile.version}
+                        </span>
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-[10px] font-semibold uppercase ${
+                            isSecure
+                              ? "bg-emerald-400/15 text-emerald-200"
+                              : "bg-rose-400/15 text-rose-200"
+                          }`}
+                        >
+                          {isSecure ? (
+                            <ShieldCheck className="h-3.5 w-3.5" />
+                          ) : (
+                            <AlertTriangle className="h-3.5 w-3.5" />
+                          )}
+                          {isSecure ? "보안 통과" : "검토 필요"}
+                        </span>
+                      </div>
+                    </div>
 
-        <section className="grid gap-6 rounded-3xl border border-white/10 bg-white/5 p-6 lg:grid-cols-[minmax(0,_1.1fr)_minmax(0,_0.9fr)]">
-          <div>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs uppercase tracking-[0.35em] text-slate-300/80">컨테이너 프로파일</p>
-                <h3 className="mt-2 text-xl font-semibold text-white">운영 이미지</h3>
-              </div>
-              <Layers className="h-4 w-4 text-slate-400" />
+                    <p className="mt-3 text-xs text-slate-300">
+                      요구 리소스 {profile.quota}
+                    </p>
+                    <p className="mt-2 text-xs text-slate-400">
+                      {profile.changelog}
+                    </p>
+
+                    <div className="mt-4 grid gap-2 text-[11px] text-slate-400">
+                      <div className="flex items-center justify-between">
+                        <span>체크섬</span>
+                        <span className="font-mono text-slate-200">
+                          {profile.digest}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span>최근 스캔</span>
+                        <span>{profile.lastScan}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span>레지스트리</span>
+                        <span>{profile.registry}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span>태그</span>
+                        <span>{profile.tag}</span>
+                      </div>
+                    </div>
+
+                    <div className="mt-5 flex flex-wrap gap-2 text-xs font-semibold">
+                      <button className="inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-2 text-sky-100 transition hover:bg-white/20">
+                        이미지 배포
+                        <ArrowUpRight className="h-3.5 w-3.5" />
+                      </button>
+                      <button className="inline-flex items-center gap-2 rounded-full border border-white/15 px-4 py-2 text-slate-200 transition hover:border-sky-200 hover:text-sky-100">
+                        스캔 보고서
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-            <div className="mt-6 grid gap-4 text-sm text-slate-200">
-              {containerProfiles.map((profile) => (
-                <div key={profile.name} className="rounded-2xl border border-white/10 bg-slate-950/50 p-4">
-                  <p className="text-xs uppercase tracking-[0.35em] text-slate-400">{profile.type}</p>
-                  <p className="mt-2 text-lg font-semibold text-white">{profile.name}</p>
-                  <p className="mt-2 text-xs text-slate-400">{profile.quota}</p>
-                  <p className="mt-1 text-xs text-slate-400">런타임: {profile.runtime}</p>
-                  <button className="mt-4 inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-2 text-xs font-semibold text-sky-100 transition hover:bg-white/20">
-                    업데이트 배포
-                    <ArrowUpRight className="h-3.5 w-3.5" />
+
+            <div className="grid gap-4 md:grid-cols-3">
+              {[
+                {
+                  icon: PackagePlus,
+                  title: "신규 이미지 등록",
+                  description:
+                    "CI/CD 파이프라인에서 푸시된 태그를 승인하고 자동 서명합니다.",
+                  action: "등록 가이드",
+                },
+                {
+                  icon: ClipboardCheck,
+                  title: "취약점 스캔",
+                  description:
+                    "Trivy/Grype 연동으로 CVE 리포트를 생성하고 정책을 업데이트하세요.",
+                  action: "스캔 수행",
+                },
+                {
+                  icon: Layers,
+                  title: "런타임 템플릿",
+                  description:
+                    "워크로드별 Helm 차트·K8s 매니페스트를 버전별로 관리합니다.",
+                  action: "템플릿 관리",
+                },
+              ].map((item) => (
+                <div
+                  key={item.title}
+                  className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-slate-950/60 p-4 text-sm text-slate-200"
+                >
+                  <div className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/10">
+                    <item.icon className="h-4 w-4 text-sky-200" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-white">
+                      {item.title}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-400">
+                      {item.description}
+                    </p>
+                  </div>
+                  <button className="mt-auto inline-flex w-max items-center gap-2 text-xs font-semibold text-sky-100 transition hover:text-sky-50">
+                    {item.action}
+                    <ArrowUpRight className="h-3 w-3" />
                   </button>
                 </div>
               ))}
             </div>
-          </div>
-
-          <div className="rounded-3xl border border-white/10 bg-slate-950/60 p-6 text-sm text-slate-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs uppercase tracking-[0.35em] text-sky-200">네트워크</p>
-                <h3 className="mt-2 text-lg font-semibold text-white">패브릭 상태</h3>
-              </div>
-              <Router className="h-4 w-4 text-slate-400" />
-            </div>
-            <div className="mt-6 grid gap-3">
-              {[
-                { label: "InfiniBand Fabric", metric: "99.92%", detail: "에러 패킷 0.03%" },
-                { label: "동기화 지연", metric: "1.8ms", detail: "SLA 3ms" },
-                { label: "네임스페이스 라우팅", metric: "정상", detail: "최근 전환 12분 전" },
-              ].map((item) => (
-                <div key={item.label} className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                  <p className="text-xs uppercase tracking-[0.35em] text-slate-400">{item.label}</p>
-                  <p className="mt-2 text-lg font-semibold text-white">{item.metric}</p>
-                  <p className="mt-1 text-xs text-slate-400">{item.detail}</p>
-                </div>
-              ))}
-            </div>
-            <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-4 text-xs text-slate-200">
-              패브릭 재구성 작업 시 affected namespace 리스트와 대체 경로가 자동으로 Slack 채널에 공유됩니다.
-            </div>
-            <div className="mt-4 flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 p-4">
-              <Wifi className="h-5 w-5 text-sky-200" />
-              <div>
-                <p className="font-semibold text-white">API Gateway 상태</p>
-                <p className="text-xs text-slate-400">요청 성공률 99.98%, 평균 지연 112ms</p>
-              </div>
-            </div>
-          </div>
-        </section>
+          </section>
       </div>
     </div>
   );
