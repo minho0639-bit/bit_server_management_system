@@ -34,6 +34,13 @@ const ALLOCATION_STATUS_LABEL = {
   terminated: "종료",
 } as const;
 
+const RESOURCE_CAPACITY = {
+  cpuCores: 4000,
+  gpuCount: 256,
+  memoryGb: 16384,
+  storageGb: 32768,
+};
+
 const opsMetrics = [
   {
     title: "GPU 클러스터",
@@ -159,6 +166,52 @@ export default async function AdminDashboardPage() {
       .map((allocation) => allocation.nodeId),
   ).size;
 
+  const runningAllocations = allocations.filter(
+    (allocation) => allocation.status === "running",
+  );
+
+  const resourceUsage = runningAllocations.reduce(
+    (acc, allocation) => {
+      acc.cpuCores += allocation.cpuCores;
+      acc.gpuCount += allocation.gpuCount;
+      acc.memoryGb += allocation.memoryGb;
+      acc.storageGb += allocation.storageGb;
+      return acc;
+    },
+    { cpuCores: 0, gpuCount: 0, memoryGb: 0, storageGb: 0 },
+  );
+
+  const resourceMetrics = [
+    {
+      id: "cpu",
+      label: "CPU 사용량",
+      value: resourceUsage.cpuCores,
+      capacity: RESOURCE_CAPACITY.cpuCores,
+      unit: "vCore",
+    },
+    {
+      id: "gpu",
+      label: "GPU 사용량",
+      value: resourceUsage.gpuCount,
+      capacity: RESOURCE_CAPACITY.gpuCount,
+      unit: "GPU",
+    },
+    {
+      id: "memory",
+      label: "메모리 사용량",
+      value: resourceUsage.memoryGb,
+      capacity: RESOURCE_CAPACITY.memoryGb,
+      unit: "GB",
+    },
+    {
+      id: "storage",
+      label: "스토리지 사용량",
+      value: resourceUsage.storageGb,
+      capacity: RESOURCE_CAPACITY.storageGb,
+      unit: "GB",
+    },
+  ];
+
   return (
     <div className="flex min-h-full flex-col">
       <PortalHeader
@@ -188,6 +241,44 @@ export default async function AdminDashboardPage() {
       />
 
       <div className="flex-1 space-y-10 px-6 py-8">
+          <section className="grid gap-6 xl:grid-cols-4">
+            {opsMetrics.map((metric) => (
+              <div
+                key={metric.title}
+                className="relative overflow-hidden rounded-3xl border border-white/10 bg-white/5 p-6"
+              >
+                <div
+                  className={`pointer-events-none absolute inset-0 -z-10 bg-gradient-to-br ${metric.accent}`}
+                />
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.3em] text-slate-300/80">
+                      {metric.title}
+                    </p>
+                    <p className="mt-4 text-3xl font-semibold text-white">{metric.value}</p>
+                  </div>
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 text-slate-100">
+                    <metric.icon className="h-5 w-5" />
+                  </div>
+                </div>
+                <div className="mt-4 flex items-center justify-between text-xs text-slate-300/80">
+                  <span>{metric.sub}</span>
+                  <span
+                    className={`inline-flex items-center rounded-full px-3 py-1 text-[10px] font-semibold uppercase ${
+                      metric.status === "긴급"
+                        ? "bg-rose-400/20 text-rose-200"
+                        : metric.status === "주의"
+                          ? "bg-amber-400/20 text-amber-200"
+                          : "bg-emerald-400/20 text-emerald-200"
+                    }`}
+                  >
+                    {metric.status}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </section>
+
           <section className="grid gap-6 rounded-3xl border border-white/10 bg-gradient-to-br from-white/10 via-slate-900/70 to-slate-950/80 p-6 xl:grid-cols-[minmax(0,_1.15fr)_minmax(0,_0.85fr)]">
             <div className="space-y-5">
               <div className="flex items-center justify-between">
@@ -360,6 +451,39 @@ export default async function AdminDashboardPage() {
                   컨테이너 파이프라인 상황판
                 </h3>
               </div>
+                <div className="grid gap-3 rounded-2xl border border-white/10 bg-slate-950/80 p-4">
+                  <p className="text-xs uppercase tracking-[0.35em] text-slate-400">
+                    리소스 모니터링
+                  </p>
+                  <div className="grid gap-3">
+                    {resourceMetrics.map((metric) => {
+                      const percent =
+                        metric.capacity > 0
+                          ? Math.min(100, Math.round((metric.value / metric.capacity) * 100))
+                          : 0;
+                      return (
+                        <div key={metric.id} className="space-y-1.5">
+                          <div className="flex items-center justify-between text-[11px] text-slate-300">
+                            <span>{metric.label}</span>
+                            <span className="font-semibold text-white">
+                              {metric.value.toLocaleString()} /{" "}
+                              {metric.capacity.toLocaleString()} {metric.unit}
+                            </span>
+                          </div>
+                          <div className="h-1.5 rounded-full bg-white/5">
+                            <div
+                              className="h-full rounded-full bg-gradient-to-r from-sky-400 via-cyan-300 to-emerald-300 transition-all"
+                              style={{ width: `${percent}%` }}
+                            />
+                          </div>
+                          <p className="text-[10px] text-slate-500">
+                            사용률 {percent}%
+                          </p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               <div className="space-y-4 text-xs text-slate-300">
                 {([
                   {
@@ -422,44 +546,6 @@ export default async function AdminDashboardPage() {
               </Link>
             </div>
           </section>
-
-        <section className="grid gap-6 xl:grid-cols-4">
-          {opsMetrics.map((metric) => (
-            <div
-              key={metric.title}
-              className="relative overflow-hidden rounded-3xl border border-white/10 bg-white/5 p-6"
-            >
-              <div
-                className={`pointer-events-none absolute inset-0 -z-10 bg-gradient-to-br ${metric.accent}`}
-              />
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.3em] text-slate-300/80">
-                    {metric.title}
-                  </p>
-                  <p className="mt-4 text-3xl font-semibold text-white">{metric.value}</p>
-                </div>
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 text-slate-100">
-                  <metric.icon className="h-5 w-5" />
-                </div>
-              </div>
-              <div className="mt-4 flex items-center justify-between text-xs text-slate-300/80">
-                <span>{metric.sub}</span>
-                <span
-                  className={`inline-flex items-center rounded-full px-3 py-1 text-[10px] font-semibold uppercase ${
-                    metric.status === "긴급"
-                      ? "bg-rose-400/20 text-rose-200"
-                      : metric.status === "주의"
-                        ? "bg-amber-400/20 text-amber-200"
-                        : "bg-emerald-400/20 text-emerald-200"
-                  }`}
-                >
-                  {metric.status}
-                </span>
-              </div>
-            </div>
-          ))}
-        </section>
 
         <section className="grid gap-6 lg:grid-cols-[minmax(0,_1.05fr)_minmax(0,_0.95fr)]">
           <div className="rounded-3xl border border-white/10 bg-white/5 p-6">
