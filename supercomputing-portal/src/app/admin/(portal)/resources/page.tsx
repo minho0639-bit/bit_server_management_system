@@ -107,9 +107,9 @@ export default function AdminResourcesPage() {
                 노드 증설 계획
                 <ServerCog className="h-3.5 w-3.5" />
               </button>
-              <button className="inline-flex items-center gap-2 rounded-full border border-white/15 px-4 py-2 text-xs font-semibold text-slate-100 transition hover:border-sky-200 hover:text-sky-100">
-                네트워크 토폴로지
-                <Network className="h-3.5 w-3.5" />
+              <button className="inline-flex items-center gap-2 rounded-full border border-white/15 px-4 py-2 text-xs font-semibold text-slate-100 transition hover:border-emerald-300 hover:text-emerald-100">
+                이미지 카탈로그
+                <Layers className="h-3.5 w-3.5" />
               </button>
             </>
           }
