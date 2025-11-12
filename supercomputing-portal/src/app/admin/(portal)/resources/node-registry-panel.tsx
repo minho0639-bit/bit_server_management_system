@@ -11,9 +11,11 @@ import {
   Activity,
   AlertCircle,
   CheckCircle2,
+  CheckSquare2,
   PlusCircle,
   RefreshCcw,
   Server,
+  Square,
   Tag,
 } from "lucide-react";
 
@@ -57,6 +59,12 @@ function formatRelative(isoDate: string) {
   return `${diffDay}일 전`;
 }
 
+const ZONE_OPTIONS = [
+  { id: "zone-gpu", label: "GPU 존" },
+  { id: "zone-cpu", label: "CPU 존" },
+  { id: "zone-storage", label: "스토리지 존" },
+] as const;
+
 function formatLabels(labels: string[]) {
   if (labels.length === 0) {
     return "레이블 없음";
@@ -75,6 +83,7 @@ export default function NodeRegistryPanel() {
     ipAddress: "",
     role: "",
     labels: "",
+    zones: [] as string[],
     sshUser: "",
     sshPort: "",
   });
@@ -212,10 +221,19 @@ export default function NodeRegistryPanel() {
       setSuccess(null);
       setSubmitting(true);
 
-        const labels = formState.labels
-          .split(",")
-          .map((label) => label.trim())
-          .filter(Boolean);
+      const textLabels = formState.labels
+        .split(",")
+        .map((label) => label.trim())
+        .filter(Boolean);
+
+      const zoneLabels = formState.zones
+        .map((zoneId) => {
+          const option = ZONE_OPTIONS.find((item) => item.id === zoneId);
+          return option ? option.label : null;
+        })
+        .filter((label): label is string => Boolean(label));
+
+      const labels = Array.from(new Set([...zoneLabels, ...textLabels]));
 
         const basePayload = {
           name: formState.name.trim(),
@@ -284,6 +302,7 @@ export default function NodeRegistryPanel() {
             ipAddress: "",
             role: "",
             labels: "",
+        zones: [],
             sshUser: "",
             sshPort: "",
           });
@@ -315,7 +334,14 @@ export default function NodeRegistryPanel() {
         name: node.name,
         ipAddress: node.ipAddress,
         role: node.role,
-        labels: node.labels.join(", "),
+        labels: node.labels
+          .filter(
+            (label) => !ZONE_OPTIONS.some((option) => option.label === label),
+          )
+          .join(", "),
+        zones: ZONE_OPTIONS.filter((option) =>
+          node.labels.includes(option.label),
+        ).map((option) => option.id),
         sshUser: node.sshUser ?? "",
         sshPort: node.sshPort ? String(node.sshPort) : "",
       });
@@ -330,6 +356,7 @@ export default function NodeRegistryPanel() {
         ipAddress: "",
         role: "",
         labels: "",
+        zones: [],
         sshUser: "",
         sshPort: "",
       });
@@ -454,6 +481,42 @@ export default function NodeRegistryPanel() {
                 className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-white outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-400/40"
                 placeholder="GPU Cluster / Storage / Control Plane"
               />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-300">
+                클러스터 존
+              </label>
+              <div className="grid gap-2 rounded-2xl border border-white/10 bg-slate-950/60 p-4 text-xs text-slate-200">
+                {ZONE_OPTIONS.map((option) => {
+                  const selected = formState.zones.includes(option.id);
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() =>
+                        setFormState((prev) => ({
+                          ...prev,
+                          zones: prev.zones.includes(option.id)
+                            ? prev.zones.filter((zone) => zone !== option.id)
+                            : [...prev.zones, option.id],
+                        }))
+                      }
+                      className={`flex items-center justify-between rounded-xl border px-3 py-2 transition ${
+                        selected
+                          ? "border-emerald-400/60 bg-emerald-500/10 text-emerald-100"
+                          : "border-white/10 bg-transparent text-slate-300 hover:border-emerald-300/50 hover:text-emerald-100"
+                      }`}
+                    >
+                      <span>{option.label}</span>
+                      {selected ? (
+                        <CheckSquare2 className="h-4 w-4" />
+                      ) : (
+                        <Square className="h-4 w-4" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
             <div className="space-y-2">
               <label className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-300">
