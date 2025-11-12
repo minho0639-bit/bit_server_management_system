@@ -181,49 +181,57 @@ export default function NodeMonitorOverview({ className }: NodeMonitorOverviewPr
         sampleCount: 0,
       };
     }
-    return nodes.reduce(
-      (acc, node) => {
-        const status = deriveStatus(node.id);
-        acc[status] += 1;
+      return nodes.reduce(
+        (acc, node) => {
+          const status = deriveStatus(node.id);
+          acc[status] += 1;
 
-        const resource = nodeResources[node.id];
-        if (resource) {
-          acc.avgCpu += resource.cpu.usagePercent;
-          acc.avgMemory += resource.memory.usagePercent;
-          acc.peakTraffic = Math.max(
-            acc.peakTraffic,
-            resource.network.inboundMbps,
-            resource.network.outboundMbps,
-          );
-          acc.sampleCount += 1;
-        }
-        return acc;
-      },
-      {
-        healthy: 0,
-        warning: 0,
-        critical: 0,
-        avgCpu: 0,
-        avgMemory: 0,
-        peakTraffic: 0,
-        sampleCount: 0,
-      },
-    );
+          const resource = nodeResources[node.id];
+          if (resource) {
+            acc.avgCpu += resource.cpu.usagePercent;
+            acc.avgMemory += resource.memory.usagePercent;
+            const gpuUsage =
+              resource.gpus && resource.gpus.length > 0
+                ? Math.max(...resource.gpus.map((gpu) => gpu.usagePercent ?? 0), 0)
+                : 0;
+            acc.avgGpu += gpuUsage;
+            acc.peakTraffic = Math.max(
+              acc.peakTraffic,
+              resource.network.inboundMbps,
+              resource.network.outboundMbps,
+            );
+            acc.sampleCount += 1;
+          }
+          return acc;
+        },
+        {
+          healthy: 0,
+          warning: 0,
+          critical: 0,
+          avgCpu: 0,
+          avgMemory: 0,
+          avgGpu: 0,
+          peakTraffic: 0,
+          sampleCount: 0,
+        },
+      );
   }, [deriveStatus, nodeResources, nodes]);
 
   const averages = useMemo(() => {
     if (aggregates.sampleCount === 0) {
-      return {
-        avgCpu: 0,
-        avgMemory: 0,
-        peakTraffic: 0,
-      };
+        return {
+          avgCpu: 0,
+          avgMemory: 0,
+          avgGpu: 0,
+          peakTraffic: 0,
+        };
     }
     return {
       avgCpu: Number((aggregates.avgCpu / aggregates.sampleCount).toFixed(1)),
       avgMemory: Number(
         (aggregates.avgMemory / aggregates.sampleCount).toFixed(1),
       ),
+        avgGpu: Number((aggregates.avgGpu / aggregates.sampleCount).toFixed(1)),
       peakTraffic: Number(aggregates.peakTraffic.toFixed(2)),
     };
   }, [aggregates]);
@@ -239,9 +247,27 @@ export default function NodeMonitorOverview({ className }: NodeMonitorOverviewPr
       .filter((entry) => entry.resource);
 
     enriched.sort(
-      (a, b) =>
-        (b.resource?.cpu.usagePercent ?? 0) -
-        (a.resource?.cpu.usagePercent ?? 0),
+        (a, b) => {
+          const aGpu =
+            a.resource && a.resource.gpus.length > 0
+              ? Math.max(...a.resource.gpus.map((gpu) => gpu.usagePercent ?? 0))
+              : 0;
+          const bGpu =
+            b.resource && b.resource.gpus.length > 0
+              ? Math.max(...b.resource.gpus.map((gpu) => gpu.usagePercent ?? 0))
+              : 0;
+          const aScore = Math.max(
+            a.resource?.cpu.usagePercent ?? 0,
+            aGpu,
+            a.resource?.memory.usagePercent ?? 0,
+          );
+          const bScore = Math.max(
+            b.resource?.cpu.usagePercent ?? 0,
+            bGpu,
+            b.resource?.memory.usagePercent ?? 0,
+          );
+          return bScore - aScore;
+        },
     );
 
     return enriched.slice(0, 4);
@@ -272,7 +298,7 @@ export default function NodeMonitorOverview({ className }: NodeMonitorOverviewPr
         </button>
       </div>
 
-      <div className="mt-5 grid gap-4 sm:grid-cols-4">
+        <div className="mt-5 grid gap-4 sm:grid-cols-5">
         <div className="rounded-2xl border border-white/10 bg-slate-900/40 p-4">
           <p className="text-[10px] uppercase tracking-widest text-slate-400">
             전체
@@ -296,6 +322,14 @@ export default function NodeMonitorOverview({ className }: NodeMonitorOverviewPr
           </p>
         </div>
         <div className="rounded-2xl border border-white/10 bg-slate-900/40 p-4">
+            <p className="text-[10px] uppercase tracking-widest text-slate-400">
+              평균 GPU
+            </p>
+            <p className="mt-2 text-2xl font-semibold text-sky-200">
+              {averages.avgGpu}%
+            </p>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-slate-900/40 p-4">
           <p className="text-[10px] uppercase tracking-widest text-slate-400">
             최고 트래픽
           </p>
@@ -357,12 +391,20 @@ export default function NodeMonitorOverview({ className }: NodeMonitorOverviewPr
                 <div className="flex items-center gap-4">
                   <div className="text-right">
                     <p className="text-[10px] uppercase tracking-widest text-slate-400">
-                      CPU / Memory
+                        CPU / GPU / Memory
                     </p>
                     <p className="text-sm font-semibold text-white">
                       {resource
-                        ? `${resource.cpu.usagePercent.toFixed(1)}% / ${resource.memory.usagePercent.toFixed(1)}%`
-                        : "-- / --"}
+                          ? `${resource.cpu.usagePercent.toFixed(1)}% / ${
+                              resource.gpus && resource.gpus.length > 0
+                                ? Math.max(
+                                    ...resource.gpus.map(
+                                      (gpu) => gpu.usagePercent ?? 0,
+                                    ),
+                                  ).toFixed(1)
+                                : "—"
+                            }% / ${resource.memory.usagePercent.toFixed(1)}%`
+                          : "-- / -- / --"}
                     </p>
                   </div>
                   <div className="text-right">
