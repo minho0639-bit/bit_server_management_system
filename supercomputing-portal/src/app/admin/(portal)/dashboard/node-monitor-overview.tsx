@@ -224,31 +224,33 @@ export default function NodeMonitorOverview({ className }: NodeMonitorOverviewPr
     };
 
     nodes.forEach((node) => {
-      let zone: ZoneKey | null = null;
-      if (node.labels.includes("GPU 존")) zone = "gpu";
-      else if (node.labels.includes("CPU 존")) zone = "cpu";
-      else if (node.labels.includes("스토리지 존")) zone = "storage";
+      const matchedZones: ZoneKey[] = [];
+      if (node.labels.includes("GPU 존")) matchedZones.push("gpu");
+      if (node.labels.includes("CPU 존")) matchedZones.push("cpu");
+      if (node.labels.includes("스토리지 존")) matchedZones.push("storage");
 
-      if (!zone) {
+      if (matchedZones.length === 0) {
         return;
       }
 
-      const entry = stats[zone];
-      entry.total += 1;
-      const status = deriveStatus(node.id);
-      entry[status] += 1;
+      matchedZones.forEach((zone) => {
+        const entry = stats[zone];
+        entry.total += 1;
+        const status = deriveStatus(node.id);
+        entry[status] += 1;
 
-      const resource = nodeResources[node.id];
-      if (resource) {
-        entry.avgCpu += resource.cpu.usagePercent;
-        entry.avgMemory += resource.memory.usagePercent;
-        const gpuUsage =
-          resource.gpus && resource.gpus.length > 0
-            ? Math.max(...resource.gpus.map((gpu) => gpu.usagePercent ?? 0), 0)
-            : 0;
-        entry.avgGpu += gpuUsage;
-        entry.sampleCount += 1;
-      }
+        const resource = nodeResources[node.id];
+        if (resource) {
+          entry.avgCpu += resource.cpu.usagePercent;
+          entry.avgMemory += resource.memory.usagePercent;
+          const gpuUsage =
+            resource.gpus && resource.gpus.length > 0
+              ? Math.max(...resource.gpus.map((gpu) => gpu.usagePercent ?? 0), 0)
+              : 0;
+          entry.avgGpu += gpuUsage;
+          entry.sampleCount += 1;
+        }
+      });
     });
 
     (Object.keys(stats) as ZoneKey[]).forEach((zone) => {
