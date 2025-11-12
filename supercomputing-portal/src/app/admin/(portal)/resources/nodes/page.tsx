@@ -1,6 +1,7 @@
 import Link from "next/link";
 import {
   ActivitySquare,
+  AlertCircle,
   ArrowLeft,
   Cpu,
   Gauge,
@@ -11,9 +12,13 @@ import {
 
 import { PortalHeader } from "@/components/portal/portal-header";
 import { listStoredNodes } from "@/lib/admin-node-store";
-import { createNodeTelemetry } from "@/lib/admin-node-telemetry";
+import {
+  createNodeResourceSnapshot,
+  type NodeResourceSnapshot,
+} from "@/lib/admin-node-resources";
 
 type ClusterZoneKey = "gpu" | "cpu" | "storage";
+type HealthStatus = "healthy" | "warning" | "critical";
 
 const CLUSTER_ZONE_META: Record<
   ClusterZoneKey,
@@ -36,16 +41,13 @@ const CLUSTER_ZONE_META: Record<
   },
 };
 
-const STATUS_STYLE: Record<
-  "healthy" | "warning" | "critical",
-  string
-> = {
+const STATUS_STYLE: Record<HealthStatus, string> = {
   healthy: "border-emerald-500/40 bg-emerald-500/10 text-emerald-100",
   warning: "border-amber-500/40 bg-amber-500/10 text-amber-100",
   critical: "border-rose-500/40 bg-rose-500/10 text-rose-100",
 };
 
-const STATUS_LABEL: Record<"healthy" | "warning" | "critical", string> = {
+const STATUS_LABEL: Record<HealthStatus, string> = {
   healthy: "정상",
   warning: "주의",
   critical: "위험",
@@ -63,18 +65,68 @@ function formatRelativeTime(iso: string) {
   return `${diffDays}일 전`;
 }
 
+function extractGpuUsage(snapshot: NodeResourceSnapshot | null) {
+  if (!snapshot || snapshot.gpus.length === 0) {
+    return null;
+  }
+  const totalUsage = snapshot.gpus.reduce(
+    (acc, gpu) => acc + gpu.usagePercent,
+    0,
+  );
+  return Number((totalUsage / snapshot.gpus.length).toFixed(1));
+}
+
+function deriveStatus(cpuUsage: number | null, gpuUsage: number | null): HealthStatus {
+  const combined = Math.max(cpuUsage ?? 0, gpuUsage ?? 0);
+  if (combined >= 90) return "critical";
+  if (combined >= 75) return "warning";
+  return "healthy";
+}
+
+function isMonitoringConfigured() {
+  return Boolean(
+    process.env.NODE_MONITOR_SSH_KEY ||
+      process.env.NODE_MONITOR_SSH_KEY_PATH ||
+      process.env.NODE_MONITOR_SSH_PASSWORD,
+  );
+}
+
 export const dynamic = "force-dynamic";
 
 export default async function NodesOverviewPage() {
   const nodes = await listStoredNodes();
-  const telemetryByNode = new Map(
-    nodes.map((node) => [node.id, createNodeTelemetry(node)]),
+  const monitoringEnabled = isMonitoringConfigured();
+
+  const nodesWithSnapshot = await Promise.all(
+    nodes.map(async (node) => {
+      if (!monitoringEnabled) {
+        return { node, snapshot: null as NodeResourceSnapshot | null, error: null as string | null };
+      }
+      try {
+        const snapshot = await createNodeResourceSnapshot(node);
+        return { node, snapshot, error: null as string | null };
+      } catch (error) {
+        console.error(
+          "[nodes.page] 노드 리소스 스냅샷 수집 실패:",
+          node.name,
+          error,
+        );
+        return {
+          node,
+          snapshot: null as NodeResourceSnapshot | null,
+          error:
+            error instanceof Error
+              ? error.message
+              : "리소스를 수집하지 못했습니다.",
+        };
+      }
+    }),
   );
 
   const zoneGroups = (Object.keys(CLUSTER_ZONE_META) as ClusterZoneKey[]).map(
     (key) => {
       const meta = CLUSTER_ZONE_META[key];
-      const groupNodes = nodes.filter((node) =>
+      const groupNodes = nodesWithSnapshot.filter(({ node }) =>
         node.labels.includes(meta.label),
       );
       return {
@@ -85,14 +137,16 @@ export default async function NodesOverviewPage() {
     },
   );
 
-  const unassignedNodes = nodes.filter(
-    (node) =>
-      !Object.values(CLUSTER_ZONE_META).some((meta) =>
-        node.labels.includes(meta.label),
-      ),
+  const unassignedNodes = nodesWithSnapshot.filter(({ node }) =>
+    Object.values(CLUSTER_ZONE_META).every(
+      (meta) => !node.labels.includes(meta.label),
+    ),
   );
 
   const totalNodes = nodes.length;
+  const failedSnapshots = nodesWithSnapshot.filter(
+    ({ snapshot, error }) => monitoringEnabled && !snapshot && error,
+  ).length;
 
   return (
     <div className="flex min-h-full flex-col">
@@ -127,6 +181,17 @@ export default async function NodesOverviewPage() {
             <Server className="h-3.5 w-3.5 text-sky-200" />
             미할당 노드 {unassignedNodes.length}대
           </div>
+          {!monitoringEnabled ? (
+            <div className="inline-flex items-center gap-2 rounded-full border border-dashed border-white/20 bg-slate-950/40 px-4 py-2 text-[11px] text-slate-300">
+              <AlertCircle className="h-3.5 w-3.5 text-amber-300" />
+              NODE_MONITOR_SSH_* 환경 변수를 설정하면 실시간 계측이 표시됩니다.
+            </div>
+          ) : failedSnapshots > 0 ? (
+            <div className="inline-flex items-center gap-2 rounded-full border border-rose-500/40 bg-rose-500/10 px-4 py-2 text-[11px] text-rose-100">
+              <AlertCircle className="h-3.5 w-3.5" />
+              {failedSnapshots}대 노드의 계측 데이터를 수집하지 못했습니다.
+            </div>
+          ) : null}
         </section>
 
         {zoneGroups.map((group) => (
@@ -158,13 +223,12 @@ export default async function NodesOverviewPage() {
               </div>
             ) : (
               <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-                {group.nodes.map((node) => {
-                  const telemetry = telemetryByNode.get(node.id);
-                  const status = telemetry?.status ?? "healthy";
-                  const gpuUsage =
-                    telemetry?.gpuUsage !== null && telemetry?.gpuUsage !== undefined
-                      ? telemetry.gpuUsage
-                      : null;
+                {group.nodes.map(({ node, snapshot, error }) => {
+                  const cpuUsage = snapshot?.cpu.usagePercent ?? null;
+                  const memoryUsage = snapshot?.memory.usagePercent ?? null;
+                  const gpuUsage = extractGpuUsage(snapshot);
+                  const status = deriveStatus(cpuUsage, gpuUsage);
+
                   return (
                     <div
                       key={node.id}
@@ -195,13 +259,18 @@ export default async function NodesOverviewPage() {
                             CPU 사용률
                           </span>
                           <span className="font-semibold text-slate-100">
-                            {telemetry?.cpuUsage ?? 0}%
+                            {cpuUsage !== null ? `${cpuUsage.toFixed(1)}%` : "측정 불가"}
                           </span>
                         </div>
                         <div className="h-1.5 rounded-full bg-white/5">
                           <div
                             className="h-full rounded-full bg-gradient-to-r from-sky-400 via-cyan-300 to-emerald-300"
-                            style={{ width: `${telemetry?.cpuUsage ?? 0}%` }}
+                            style={{
+                              width:
+                                cpuUsage !== null
+                                  ? `${Math.min(cpuUsage, 100)}%`
+                                  : "0%",
+                            }}
                           />
                         </div>
                         <div className="flex items-center justify-between">
@@ -210,13 +279,20 @@ export default async function NodesOverviewPage() {
                             메모리 사용률
                           </span>
                           <span className="font-semibold text-slate-100">
-                            {telemetry?.memoryUsage ?? 0}%
+                            {memoryUsage !== null
+                              ? `${memoryUsage.toFixed(1)}%`
+                              : "측정 불가"}
                           </span>
                         </div>
                         <div className="h-1.5 rounded-full bg-white/5">
                           <div
                             className="h-full rounded-full bg-gradient-to-r from-emerald-400 via-teal-300 to-sky-300"
-                            style={{ width: `${telemetry?.memoryUsage ?? 0}%` }}
+                            style={{
+                              width:
+                                memoryUsage !== null
+                                  ? `${Math.min(memoryUsage, 100)}%`
+                                  : "0%",
+                            }}
                           />
                         </div>
                         {gpuUsage !== null ? (
@@ -227,17 +303,23 @@ export default async function NodesOverviewPage() {
                                 GPU 사용률
                               </span>
                               <span className="font-semibold text-slate-100">
-                                {gpuUsage}%
+                                {gpuUsage.toFixed(1)}%
                               </span>
                             </div>
                             <div className="h-1.5 rounded-full bg-white/5">
                               <div
                                 className="h-full rounded-full bg-gradient-to-r from-violet-400 via-purple-300 to-pink-300"
-                                style={{ width: `${gpuUsage}%` }}
+                                style={{
+                                  width: `${Math.min(gpuUsage, 100)}%`,
+                                }}
                               />
                             </div>
                           </>
-                        ) : null}
+                        ) : (
+                          <div className="rounded-2xl border border-dashed border-white/15 bg-white/5 px-3 py-2 text-xs text-slate-400">
+                            GPU 계측 데이터가 없습니다.
+                          </div>
+                        )}
                         <div className="mt-3">
                           <p className="text-[11px] text-slate-400">
                             존 레이블
@@ -260,10 +342,10 @@ export default async function NodesOverviewPage() {
                           </div>
                         </div>
                         <div className="mt-3 flex items-center justify-between text-[11px] text-slate-400">
-                          <span>최근 하트비트</span>
+                          <span>최근 계측</span>
                           <span>
-                            {telemetry?.lastHeartbeat
-                              ? formatRelativeTime(telemetry.lastHeartbeat)
+                            {snapshot?.timestamp
+                              ? formatRelativeTime(snapshot.timestamp)
                               : "정보 없음"}
                           </span>
                         </div>
@@ -271,6 +353,11 @@ export default async function NodesOverviewPage() {
                           <span>등록</span>
                           <span>{formatRelativeTime(node.createdAt)}</span>
                         </div>
+                        {error ? (
+                          <div className="rounded-2xl border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-[11px] text-rose-100">
+                            {error}
+                          </div>
+                        ) : null}
                       </div>
                     </div>
                   );
@@ -296,9 +383,9 @@ export default async function NodesOverviewPage() {
               </span>
             </div>
             <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-              {unassignedNodes.map((node) => {
-                const telemetry = telemetryByNode.get(node.id);
-                const status = telemetry?.status ?? "healthy";
+              {unassignedNodes.map(({ node, snapshot, error }) => {
+                const cpuUsage = snapshot?.cpu.usagePercent ?? null;
+                const status = deriveStatus(cpuUsage, null);
                 return (
                   <div
                     key={node.id}
@@ -329,19 +416,29 @@ export default async function NodesOverviewPage() {
                           CPU 사용률
                         </span>
                         <span className="font-semibold text-slate-100">
-                          {telemetry?.cpuUsage ?? 0}%
+                          {cpuUsage !== null ? `${cpuUsage.toFixed(1)}%` : "측정 불가"}
                         </span>
                       </div>
                       <div className="h-1.5 rounded-full bg-white/5">
                         <div
                           className="h-full rounded-full bg-gradient-to-r from-sky-400 via-cyan-300 to-emerald-300"
-                          style={{ width: `${telemetry?.cpuUsage ?? 0}%` }}
+                          style={{
+                            width:
+                              cpuUsage !== null
+                                ? `${Math.min(cpuUsage, 100)}%`
+                                : "0%",
+                          }}
                         />
                       </div>
                       <div className="flex items-center justify-between text-[11px] text-slate-400">
                         <span>등록</span>
                         <span>{formatRelativeTime(node.createdAt)}</span>
                       </div>
+                      {error ? (
+                        <div className="rounded-2xl border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-[11px] text-rose-100">
+                          {error}
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 );
@@ -353,4 +450,3 @@ export default async function NodesOverviewPage() {
     </div>
   );
 }
-

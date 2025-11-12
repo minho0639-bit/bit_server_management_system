@@ -21,6 +21,7 @@ import {
 } from "@/lib/admin-resource-allocations";
 import { listStoredNodes } from "@/lib/admin-node-store";
 import { createNodeTelemetry } from "@/lib/admin-node-telemetry";
+import { getResourceCapacity } from "@/lib/resource-capacity-store";
 import NodeMonitorOverview from "./node-monitor-overview";
 
 const ALLOCATION_STATUS_STYLE = {
@@ -36,13 +37,6 @@ const ALLOCATION_STATUS_LABEL = {
   failed: "실패",
   terminated: "종료",
 } as const;
-
-const RESOURCE_CAPACITY = {
-  cpuCores: 4000,
-  gpuCount: 256,
-  memoryGb: 16384,
-  storageGb: 32768,
-};
 
 type ClusterZoneKey = "gpu" | "cpu" | "storage";
 
@@ -117,9 +111,10 @@ const REQUEST_STATUS_LABEL: Record<ResourceRequestStatus, string> = {
 export const dynamic = "force-dynamic";
 
 export default async function AdminDashboardPage() {
-  const [{ requests, allocations }, nodes] = await Promise.all([
+  const [{ requests, allocations }, nodes, capacity] = await Promise.all([
     getAllocationOverview(),
     listStoredNodes(),
+    getResourceCapacity(),
   ]);
 
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
@@ -172,28 +167,28 @@ export default async function AdminDashboardPage() {
       id: "cpu",
       label: "CPU 사용량",
       value: resourceUsage.cpuCores,
-      capacity: RESOURCE_CAPACITY.cpuCores,
+      capacity: capacity.cpu.totalCores,
       unit: "vCore",
     },
     {
       id: "gpu",
       label: "GPU 사용량",
       value: resourceUsage.gpuCount,
-      capacity: RESOURCE_CAPACITY.gpuCount,
+      capacity: capacity.gpu.totalUnits,
       unit: "GPU",
     },
     {
       id: "memory",
       label: "메모리 사용량",
       value: resourceUsage.memoryGb,
-      capacity: RESOURCE_CAPACITY.memoryGb,
+      capacity: capacity.memory.totalGb,
       unit: "GB",
     },
     {
       id: "storage",
       label: "스토리지 사용량",
       value: resourceUsage.storageGb,
-      capacity: RESOURCE_CAPACITY.storageGb,
+      capacity: capacity.storage.totalGb,
       unit: "GB",
     },
   ];
@@ -245,12 +240,15 @@ export default async function AdminDashboardPage() {
         : "bg-slate-500/30 text-slate-200",
     })),
     {
-      title: "총 등록 노드",
-      value: `${nodes.length}대`,
-      sub: `대기 요청 ${pendingCount}건`,
-      accent: "from-white/20 via-slate-700/10 to-transparent",
+      title: "리소스 신청",
+      value: `${requests.length}건`,
+      sub:
+        requests.length === 0
+          ? "등록된 신청이 없습니다."
+          : `대기 ${pendingCount}건 · 완료 ${requests.filter((r) => r.status === "fulfilled").length}건`,
+      accent: "from-sky-400/20 via-indigo-300/10 to-transparent",
       icon: Server,
-      badge: "현황",
+      badge: "신청 현황",
       badgeClass: "bg-sky-400/20 text-sky-200",
     },
   ];
@@ -738,6 +736,17 @@ export default async function AdminDashboardPage() {
               컨테이너 워크플로 열기
               <ArrowUpRight className="h-3.5 w-3.5" />
             </Link>
+            <p className="text-[11px] text-slate-500">
+              자원 총량 기준은{" "}
+              <Link
+                href="/admin/docs/resource-capacity"
+                className="inline-flex items-center gap-1 text-sky-200 underline underline-offset-4"
+              >
+                자원 용량 정의 문서
+                <ArrowUpRight className="h-3 w-3" />
+              </Link>
+              에서 확인하고 수정할 수 있습니다.
+            </p>
           </div>
         </section>
 
