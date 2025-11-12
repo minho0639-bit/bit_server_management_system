@@ -12,71 +12,31 @@ import {
 import { PortalHeader } from "@/components/portal/portal-header";
 import NodeRegistryPanel from "./node-registry-panel";
 
-const nodeSummary = [
-  {
-    title: "GPU 존",
-    ready: 120,
-    capacity: 142,
-    temp: "29°C",
-    utilization: 84,
-  },
-  {
-    title: "CPU 존",
-    ready: 320,
-    capacity: 368,
-    temp: "25°C",
-    utilization: 71,
-  },
-  {
-    title: "스토리지 존",
-    ready: 88,
-    capacity: 102,
-    temp: "27°C",
-    utilization: 63,
-  },
-];
+type ClusterZoneSummary = {
+  title: string;
+  ready: number;
+  capacity: number;
+  temp: string;
+  utilization: number;
+};
 
-const containerProfiles = [
-  {
-    name: "quantumflow/hpc-gpu:1.4",
-    type: "GPU",
-    quota: "GPU 4 · CPU 64 · RAM 256GB",
-    runtime: "K8s + Slurm",
-    version: "1.4.2",
-    digest: "sha256:93fd...a21c",
-    lastScan: "오늘 09:20",
-    security: "pass" as const,
-    registry: "registry.quantumflow.kr",
-    tag: "stable",
-    changelog: "CUDA 12.2 · NCCL 2.18 · cuDNN 9.1",
-  },
-  {
-    name: "quantumflow/data-pipeline:2.1",
-    type: "CPU",
-    quota: "CPU 128 · RAM 512GB",
-    runtime: "K8s + Airflow",
-    version: "2.1.5",
-    digest: "sha256:8a7c...e4b2",
-    lastScan: "어제 22:15",
-    security: "pass" as const,
-    registry: "registry.quantumflow.kr",
-    tag: "canary",
-    changelog: "Apache Airflow 2.9 · Spark 3.5 패치",
-  },
-  {
-    name: "quantumflow/analysis-lite:1.8",
-    type: "CPU",
-    quota: "CPU 48 · RAM 192GB",
-    runtime: "K8s + Jupyter",
-    version: "1.8.1",
-    digest: "sha256:5b61...9ef0",
-    lastScan: "3일 전",
-    security: "warn" as const,
-    registry: "registry.quantumflow.kr",
-    tag: "lts",
-    changelog: "RStudio 추가 · JupyterLab 4.1",
-  },
-];
+type ContainerProfile = {
+  name: string;
+  type: string;
+  quota: string;
+  runtime: string;
+  version?: string;
+  digest?: string;
+  lastScan?: string;
+  security?: "pass" | "warn" | "fail";
+  registry?: string;
+  tag?: string;
+  changelog?: string;
+};
+
+const nodeSummary: ClusterZoneSummary[] = [];
+
+const containerProfiles: ContainerProfile[] = [];
 
 export default function AdminResourcesPage() {
   return (
@@ -147,33 +107,41 @@ export default function AdminResourcesPage() {
             </section>
 
           <section className="grid gap-6 rounded-3xl border border-white/10 bg-white/5 p-6 md:grid-cols-2 xl:grid-cols-4">
-            {nodeSummary.map((node) => (
-              <div key={node.title} className="rounded-3xl border border-white/10 bg-slate-950/50 p-5">
-                <p className="text-xs uppercase tracking-[0.35em] text-slate-300/80">{node.title}</p>
+            {nodeSummary.length === 0 ? (
+              <div className="col-span-full rounded-3xl border border-dashed border-white/15 bg-slate-950/40 p-6 text-center text-sm text-slate-300">
+                등록된 클러스터 존 데이터가 없습니다.{" "}
+                <span className="text-sky-200">노드를 추가하고</span> 각 존의 실시간
+                현황을 모니터링하세요.
+              </div>
+            ) : (
+              nodeSummary.map((node) => (
+                <div key={node.title} className="rounded-3xl border border-white/10 bg-slate-950/50 p-5">
+                  <p className="text-xs uppercase tracking-[0.35em] text-slate-300/80">{node.title}</p>
                   <p className="mt-3 text-lg font-semibold text-white">
                     정상 {node.ready}/{node.capacity}
                   </p>
-                <div className="mt-4 space-y-3 text-xs text-slate-300">
+                  <div className="mt-4 space-y-3 text-xs text-slate-300">
                     <p>평균 온도 {node.temp}</p>
-                  <div className="space-y-1">
+                    <div className="space-y-1">
                       <p>평균 사용률</p>
-                    <div className="h-2 rounded-full bg-white/5">
-                      <div
-                        className="h-full rounded-full bg-gradient-to-r from-sky-400 via-cyan-300 to-teal-200"
-                        style={{ width: `${node.utilization}%` }}
-                      />
+                      <div className="h-2 rounded-full bg-white/5">
+                        <div
+                          className="h-full rounded-full bg-gradient-to-r from-sky-400 via-cyan-300 to-teal-200"
+                          style={{ width: `${node.utilization}%` }}
+                        />
+                      </div>
                     </div>
                   </div>
+                  <Link
+                    href="/admin/resources/nodes"
+                    className="mt-4 inline-flex items-center gap-2 text-xs font-semibold text-sky-200"
+                  >
+                    상세 보기
+                    <ArrowUpRight className="h-3 w-3" />
+                  </Link>
                 </div>
-                <Link
-                  href="/admin/resources/nodes"
-                  className="mt-4 inline-flex items-center gap-2 text-xs font-semibold text-sky-200"
-                >
-                  상세 보기
-                  <ArrowUpRight className="h-3 w-3" />
-                </Link>
-              </div>
-            ))}
+              ))
+            )}
           </section>
 
           <section className="space-y-6 rounded-3xl border border-white/10 bg-white/5 p-6">
@@ -196,86 +164,111 @@ export default function AdminResourcesPage() {
             </div>
 
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {containerProfiles.map((profile) => {
-                const isSecure = profile.security === "pass";
-                return (
-                  <div
-                    key={profile.name}
-                    className="rounded-2xl border border-white/10 bg-slate-950/60 p-5 text-sm text-slate-200"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-xs uppercase tracking-[0.35em] text-slate-400">
-                          {profile.type}
+              {containerProfiles.length === 0 ? (
+                <div className="col-span-full rounded-2xl border border-dashed border-white/20 bg-slate-950/50 p-6 text-center text-sm text-slate-300">
+                  운영 이미지가 아직 등록되지 않았습니다. CI/CD 파이프라인과 연동해
+                  컨테이너 이미지를 업로드하면 이 영역에서 관리할 수 있습니다.
+                </div>
+              ) : (
+                containerProfiles.map((profile) => {
+                  const isSecure = profile.security !== "warn" && profile.security !== "fail";
+                  const statusLabel =
+                    profile.security === "pass"
+                      ? "보안 통과"
+                      : profile.security
+                        ? "검토 필요"
+                        : "검토 필요";
+                  return (
+                    <div
+                      key={profile.name}
+                      className="rounded-2xl border border-white/10 bg-slate-950/60 p-5 text-sm text-slate-200"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-xs uppercase tracking-[0.35em] text-slate-400">
+                            {profile.type}
+                          </p>
+                          <h4 className="mt-2 text-lg font-semibold text-white">
+                            {profile.name}
+                          </h4>
+                          <p className="mt-1 text-xs text-slate-400">
+                            런타임: {profile.runtime}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2 text-[11px]">
+                          {profile.version ? (
+                            <span className="rounded-full border border-white/15 px-3 py-1 text-[10px] uppercase tracking-widest text-slate-300">
+                              v{profile.version}
+                            </span>
+                          ) : null}
+                          <span
+                            className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-[10px] font-semibold uppercase ${
+                              isSecure
+                                ? "bg-emerald-400/15 text-emerald-200"
+                                : "bg-rose-400/15 text-rose-200"
+                            }`}
+                          >
+                            {isSecure ? (
+                              <ShieldCheck className="h-3.5 w-3.5" />
+                            ) : (
+                              <AlertTriangle className="h-3.5 w-3.5" />
+                            )}
+                            {statusLabel}
+                          </span>
+                        </div>
+                      </div>
+
+                      <p className="mt-3 text-xs text-slate-300">
+                        요구 리소스 {profile.quota}
+                      </p>
+                      {profile.changelog ? (
+                        <p className="mt-2 text-xs text-slate-400">
+                          {profile.changelog}
                         </p>
-                        <h4 className="mt-2 text-lg font-semibold text-white">
-                          {profile.name}
-                        </h4>
-                        <p className="mt-1 text-xs text-slate-400">
-                          런타임: {profile.runtime}
-                        </p>
+                      ) : null}
+
+                      <div className="mt-4 grid gap-2 text-[11px] text-slate-400">
+                        {profile.digest ? (
+                          <div className="flex items-center justify-between">
+                            <span>체크섬</span>
+                            <span className="font-mono text-slate-200">
+                              {profile.digest}
+                            </span>
+                          </div>
+                        ) : null}
+                        {profile.lastScan ? (
+                          <div className="flex items-center justify-between">
+                            <span>최근 스캔</span>
+                            <span>{profile.lastScan}</span>
+                          </div>
+                        ) : null}
+                        {profile.registry ? (
+                          <div className="flex items-center justify-between">
+                            <span>레지스트리</span>
+                            <span>{profile.registry}</span>
+                          </div>
+                        ) : null}
+                        {profile.tag ? (
+                          <div className="flex items-center justify-between">
+                            <span>태그</span>
+                            <span>{profile.tag}</span>
+                          </div>
+                        ) : null}
                       </div>
-                      <div className="flex items-center gap-2 text-[11px]">
-                        <span className="rounded-full border border-white/15 px-3 py-1 text-[10px] uppercase tracking-widest text-slate-300">
-                          v{profile.version}
-                        </span>
-                        <span
-                          className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-[10px] font-semibold uppercase ${
-                            isSecure
-                              ? "bg-emerald-400/15 text-emerald-200"
-                              : "bg-rose-400/15 text-rose-200"
-                          }`}
-                        >
-                          {isSecure ? (
-                            <ShieldCheck className="h-3.5 w-3.5" />
-                          ) : (
-                            <AlertTriangle className="h-3.5 w-3.5" />
-                          )}
-                          {isSecure ? "보안 통과" : "검토 필요"}
-                        </span>
+
+                      <div className="mt-5 flex flex-wrap gap-2 text-xs font-semibold">
+                        <button className="inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-2 text-sky-100 transition hover:bg-white/20">
+                          이미지 배포
+                          <ArrowUpRight className="h-3.5 w-3.5" />
+                        </button>
+                        <button className="inline-flex items-center gap-2 rounded-full border border-white/15 px-4 py-2 text-slate-200 transition hover:border-sky-200 hover:text-sky-100">
+                          스캔 보고서
+                        </button>
                       </div>
                     </div>
-
-                    <p className="mt-3 text-xs text-slate-300">
-                      요구 리소스 {profile.quota}
-                    </p>
-                    <p className="mt-2 text-xs text-slate-400">
-                      {profile.changelog}
-                    </p>
-
-                    <div className="mt-4 grid gap-2 text-[11px] text-slate-400">
-                      <div className="flex items-center justify-between">
-                        <span>체크섬</span>
-                        <span className="font-mono text-slate-200">
-                          {profile.digest}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span>최근 스캔</span>
-                        <span>{profile.lastScan}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span>레지스트리</span>
-                        <span>{profile.registry}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span>태그</span>
-                        <span>{profile.tag}</span>
-                      </div>
-                    </div>
-
-                    <div className="mt-5 flex flex-wrap gap-2 text-xs font-semibold">
-                      <button className="inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-2 text-sky-100 transition hover:bg-white/20">
-                        이미지 배포
-                        <ArrowUpRight className="h-3.5 w-3.5" />
-                      </button>
-                      <button className="inline-flex items-center gap-2 rounded-full border border-white/15 px-4 py-2 text-slate-200 transition hover:border-sky-200 hover:text-sky-100">
-                        스캔 보고서
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                })
+              )}
             </div>
 
             <div className="grid gap-4 md:grid-cols-3">
