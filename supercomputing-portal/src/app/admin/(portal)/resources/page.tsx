@@ -134,10 +134,10 @@ export default function AdminResourcesPage() {
                     <Layers className="h-3.5 w-3.5 text-emerald-200" />
                     자동 네임스페이스 구성
                   </span>
-                  <span className="inline-flex items-center gap-2 rounded-full border border-emerald-400/40 px-3 py-1">
-                    <Cpu className="h-3.5 w-3.5 text-emerald-200" />
-                    GPU/CPU 할당 검증
-                  </span>
+                    <span className="inline-flex items-center gap-2 rounded-full border border-emerald-400/40 px-3 py-1">
+                      <ServerCog className="h-3.5 w-3.5 text-emerald-200" />
+                      GPU/CPU 할당 검증
+                    </span>
                   <span className="inline-flex items-center gap-2 rounded-full border border-emerald-400/40 px-3 py-1">
                     <ServerCog className="h-3.5 w-3.5 text-emerald-200" />
                     상태 전환 추적
