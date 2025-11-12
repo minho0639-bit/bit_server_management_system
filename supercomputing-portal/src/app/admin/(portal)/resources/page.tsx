@@ -10,14 +10,16 @@ import {
 } from "lucide-react";
 
 import { PortalHeader } from "@/components/portal/portal-header";
+import { listStoredNodes } from "@/lib/admin-node-store";
+import type { StoredNode } from "@/lib/admin-node-types";
 import NodeRegistryPanel from "./node-registry-panel";
 
 type ClusterZoneSummary = {
   title: string;
-  ready: number;
-  capacity: number;
-  temp: string;
-  utilization: number;
+  count: number;
+  sampleNode?: string;
+  sampleIp?: string;
+  sampleLabels?: string[];
 };
 
 type ContainerProfile = {
@@ -34,11 +36,34 @@ type ContainerProfile = {
   changelog?: string;
 };
 
-const nodeSummary: ClusterZoneSummary[] = [];
-
 const containerProfiles: ContainerProfile[] = [];
 
-export default function AdminResourcesPage() {
+const CLUSTER_ZONES: Array<{ label: string }> = [
+  { label: "GPU 존" },
+  { label: "CPU 존" },
+  { label: "스토리지 존" },
+];
+
+function buildZoneSummary(nodes: StoredNode[]): ClusterZoneSummary[] {
+  return CLUSTER_ZONES.map(({ label }) => {
+    const zoneNodes = nodes.filter((node) => node.labels.includes(label));
+    return {
+      title: label,
+      count: zoneNodes.length,
+      sampleNode: zoneNodes[0]?.name,
+      sampleIp: zoneNodes[0]?.ipAddress,
+      sampleLabels: zoneNodes[0]?.labels ?? [],
+    };
+  });
+}
+
+export const dynamic = "force-dynamic";
+
+export default async function AdminResourcesPage() {
+  const storedNodes = await listStoredNodes();
+  const nodeSummary = buildZoneSummary(storedNodes);
+  const hasAnyZoneData = nodeSummary.some((zone) => zone.count > 0);
+
   return (
     <div className="flex min-h-full flex-col">
       <PortalHeader
@@ -107,7 +132,7 @@ export default function AdminResourcesPage() {
             </section>
 
           <section className="grid gap-6 rounded-3xl border border-white/10 bg-white/5 p-6 md:grid-cols-2 xl:grid-cols-4">
-            {nodeSummary.length === 0 ? (
+            {!hasAnyZoneData ? (
               <div className="col-span-full rounded-3xl border border-dashed border-white/15 bg-slate-950/40 p-6 text-center text-sm text-slate-300">
                 등록된 클러스터 존 데이터가 없습니다.{" "}
                 <span className="text-sky-200">노드를 추가하고</span> 각 존의 실시간
@@ -118,19 +143,20 @@ export default function AdminResourcesPage() {
                 <div key={node.title} className="rounded-3xl border border-white/10 bg-slate-950/50 p-5">
                   <p className="text-xs uppercase tracking-[0.35em] text-slate-300/80">{node.title}</p>
                   <p className="mt-3 text-lg font-semibold text-white">
-                    정상 {node.ready}/{node.capacity}
+                    등록 노드 {node.count}대
                   </p>
                   <div className="mt-4 space-y-3 text-xs text-slate-300">
-                    <p>평균 온도 {node.temp}</p>
-                    <div className="space-y-1">
-                      <p>평균 사용률</p>
-                      <div className="h-2 rounded-full bg-white/5">
-                        <div
-                          className="h-full rounded-full bg-gradient-to-r from-sky-400 via-cyan-300 to-teal-200"
-                          style={{ width: `${node.utilization}%` }}
-                        />
-                      </div>
-                    </div>
+                    {node.count > 0 ? (
+                      <>
+                        <p>최근 등록 노드 {node.sampleNode}</p>
+                        <p className="font-mono text-slate-400">{node.sampleIp}</p>
+                        <p className="text-[11px] text-slate-400">
+                          레이블: {node.sampleLabels?.join(", ") ?? "—"}
+                        </p>
+                      </>
+                    ) : (
+                      <p>등록된 노드 없음</p>
+                    )}
                   </div>
                   <Link
                     href="/admin/resources/nodes"
